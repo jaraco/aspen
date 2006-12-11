@@ -395,51 +395,51 @@ class FunctionCache(Cache):
         args, kw = key
         return self.function(*args, **dict(kw))
 
-class StaticWSGICache( FunctionCache ):
-    def __call__( self, *args, **kw ):
-        #print '__call__'
-        env = args[0]
-        path = env['PATH_TRANSLATED']
-        #ims = env.get('HTTP_IF_MODIFIED_SINCE', '')
-        #args = ( path, ims )
-        env = args[0]
-        sr = args[-1]
-        args=(path,)
-        self.__sr = sr
-        self.__env = env
-        env = {}
-        if kw:
-            # a dict is not hashable so we build a tuple of (key, value) pairs
-            env = env.update( kw )
-            
-        env = tuple(env.iteritems())
-        #res = self[args, env]
-        #print 'type: ', type(res)
-        return self[args, env]
-    
-
-    def build(self, key, name, opened, entry):
-        #print 'key: ', str(key)
-        args, kw = key
-        #print 'args: ', str(args)
-        #print 'kw: ', str(dict(kw))
-        xargs = ( self.__env, self.__sr, )
-        #print 'xargs: ', str(xargs)
-        res = self.function(*xargs, **dict(kw))#, **dict())
-        #print 'build type: ', type(res)
-        return res
-
-
-class WSGIModuleCache( ModuleCache ):
-    pass
-
-
-if __name__=='__main__':
-    from time import sleep
-    def my_long_function(value):
-        sleep(5)
-        return value+1
-    #Smy_long_function(2)
-    cached = FunctionCache(my_long_function,10)
-    print cached(2)
-    print cached(2)
+##class StaticWSGICache( FunctionCache ):
+##    def __call__( self, *args, **kw ):
+##        #print '__call__'
+##        env = args[0]
+##        path = env['PATH_TRANSLATED']
+##        #ims = env.get('HTTP_IF_MODIFIED_SINCE', '')
+##        #args = ( path, ims )
+##        env = args[0]
+##        sr = args[-1]
+##        args=(path,)
+##        self.__sr = sr
+##        self.__env = env
+##        env = {}
+##        if kw:
+##            # a dict is not hashable so we build a tuple of (key, value) pairs
+##            env = env.update( kw )
+##            
+##        env = tuple(env.iteritems())
+##        #res = self[args, env]
+##        #print 'type: ', type(res)
+##        return self[args, env]
+##    
+##
+##    def build(self, key, name, opened, entry):
+##        #print 'key: ', str(key)
+##        args, kw = key
+##        #print 'args: ', str(args)
+##        #print 'kw: ', str(dict(kw))
+##        xargs = ( self.__env, self.__sr, )
+##        #print 'xargs: ', str(xargs)
+##        res = self.function(*xargs, **dict(kw))#, **dict())
+##        #print 'build type: ', type(res)
+##        return res
+##
+##
+##class WSGIModuleCache( ModuleCache ):
+##    pass
+##
+##
+##if __name__=='__main__':
+##    from time import sleep
+##    def my_long_function(value):
+##        sleep(5)
+##        return value+1
+##    #Smy_long_function(2)
+##    cached = FunctionCache(my_long_function,10)
+##    print cached(2)
+##    print cached(2)
