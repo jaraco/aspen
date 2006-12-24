@@ -12,6 +12,10 @@ from os.path import isdir, isfile, join
 from aspen import mode, __version__
 from aspen.utils import is_valid_identifier
 
+from aspen import cache
+
+
+
 
 # File or Directory
 # =================
@@ -24,84 +28,156 @@ def HTTP404(environ, start_response):
 # File Handlers
 # =============
 
-def pyscript(environ, start_response):
-    """Execute the script pseudo-CGI-style.
-    """
-    path = environ['PATH_TRANSLATED']
-    assert isfile(path)
+class _PyScript( object ):
+    __metaclass__ = cahce.CacherClass
+    # to be done
 
-    context = dict()
-    context['environ'] = environ
-    context['start_response'] = start_response
-    context['response'] = []
-    context['__file__'] = path
+def pyscript( environ, start_response ):
+    # NOT WORKING YET!
+    _c = cahce.ModuleCache( max_size=128 )
+    return _PyScript( environ, start_response, cahcer=_c )
 
-    try:
-        exec open(path) in context
-        response = context['response']
-    except SystemExit:
-        pass
-#    except:
-#        start_response( '500 Internal Server Error'
-#                      , [('Content-type', 'text/plain')]
-#                       )
-#        if mode.debdev:
-#            return [traceback.format_exc()]
-#        else:
-#            return ['Internal Server Error']
+    
 
-    return response
+##def pyscript(environ, start_response):
+##    """Execute the script pseudo-CGI-style.
+##    """
+##    path = environ['PATH_TRANSLATED']
+##    assert isfile(path)
+##
+##    context = dict()
+##    context['environ'] = environ
+##    context['start_response'] = start_response
+##    context['response'] = []
+##    context['__file__'] = path
+##
+##    try:
+##        exec open(path) in context
+##        response = context['response']
+##    except SystemExit:
+##        pass
+###    except:
+###        start_response( '500 Internal Server Error'
+###                      , [('Content-type', 'text/plain')]
+###                       )
+###        if mode.debdev:
+###            return [traceback.format_exc()]
+###        else:
+###            return ['Internal Server Error']
+##
+##    return response
 
+
+
+class _Static( object ):
+    __metaclass__= cahce.CacherClass
+
+    # Any wsgi wep app must be a callable that accepts \
+    #at least environ dict and start_response callable and is
+    #a callable object itself; it's result must be iterable
+
+    # However, python class objects  are callables, because, by default,
+    #type metaclass has __call__ defined; therefore, if the class object
+    #itself has __iter__ and its __init__ accepts the same arguments (i.e., environ
+    #and start_response, one can employ class object as wsgi.
+
+    # Indeed, _Static callable (which happens to be a class) accepts environ, start_response;
+    #when one calls _Static, it results an iterable that happens to be its instance, just
+    #as was required by the wsgi spec.
+
+    # One has to note that this is a pretty common praxis. See, e.g., the PEP333
+    #itself, http://www.python.org/dev/peps/pep-0333/ and
+    #Colubrid source code: http://wsgiarea.pocoo.org/colubrid/
+    
+       
+    
+    def __init__( self, environ, start_response, **kw): 
+        self.__env = environ
+        self.__sr = start_response
+        assert isfile(environ['PATH_TRANSLATED'])
+        
+    def __iter__( self ):
+        key = self.__env['PATH_TRANSLATED']
+        ims = self.__env.get('HTTP_IF_MODIFIED_SINCE', '')
+        status='200 OK'
+        stats = os.stat(key)
+        mtime = stats[stat.ST_MTIME]
+        size = stats[stat.ST_SIZE]
+        content_type = mimetypes.guess_type(key)[0] or 'text/plain'
+        if mode.stprod:
+            if ims:
+                mod_since = rfc822.parsedate(ims)
+                last_modified = time.gmtime(mtime)
+                if last_modified[:6] <= mod_since[:6]:
+                    status = '304 Not Modified'
+        headers = []
+        headers.append(('Last-Modified', rfc822.formatdate(mtime)))
+        headers.append(('Content-Type', content_type))
+        headers.append(('Content-Length', str(size)))
+        self.__sr(status, headers)
+        if status == '304 Not Modified':
+            yield []
+        else:
+            yield self._fc[key]
+        
+
+##def _static(environ, start_response):
+##    """Serve a static file off of the filesystem.
+##
+##    In staging and deployment modes, we honor any 'If-Modified-Since'
+##    header, an HTTP header used for caching.
+##
+##    XXX: look at Luke Arno's ACK GPL and some others ... Etags? Iteration?
+##
+##    """
+##    
+##    assert isfile(environ['PATH_TRANSLATED'])    
+##    path = environ['PATH_TRANSLATED']
+##    ims = environ.get('HTTP_IF_MODIFIED_SINCE', '')
+##
+##
+##    # Get basic info from the filesystem and start building a response.
+##    # =================================================================
+##
+##    stats = os.stat(path)
+##    mtime = stats[stat.ST_MTIME]
+##    size = stats[stat.ST_SIZE]
+##    content_type = mimetypes.guess_type(path)[0] or 'text/plain'
+##
+##
+##    # Support 304s, but only in deployment mode.
+##    # ==========================================
+##
+##    status = '200 OK'
+##    if mode.stprod:
+##        if ims:
+##            mod_since = rfc822.parsedate(ims)
+##            last_modified = time.gmtime(mtime)
+##            if last_modified[:6] <= mod_since[:6]:
+##                status = '304 Not Modified'
+##
+##
+##    # Set up the response.
+##    # ====================
+##
+##    headers = []
+##    headers.append(('Last-Modified', rfc822.formatdate(mtime)))
+##    headers.append(('Content-Type', content_type))
+##    headers.append(('Content-Length', str(size)))
+##
+##    start_response(status, headers)
+##    if status == '304 Not Modified':
+##        return []
+##    else:        
+##        return open(path)
 
 def static(environ, start_response):
-    """Serve a static file off of the filesystem.
-
-    In staging and deployment modes, we honor any 'If-Modified-Since'
-    header, an HTTP header used for caching.
-
-    XXX: look at Luke Arno's ACK GPL and some others ... Etags? Iteration?
-
-    """
-    assert isfile(environ['PATH_TRANSLATED'])
-
-    path = environ['PATH_TRANSLATED']
-    ims = environ.get('HTTP_IF_MODIFIED_SINCE', '')
+    _c = cahce.FileCache( max_size=128, mode='rb' )
+    return _Static(environ, start_response, , cahcer=_c)
 
 
-    # Get basic info from the filesystem and start building a response.
-    # =================================================================
-
-    stats = os.stat(path)
-    mtime = stats[stat.ST_MTIME]
-    size = stats[stat.ST_SIZE]
-    content_type = mimetypes.guess_type(path)[0] or 'text/plain'
-
-
-    # Support 304s, but only in deployment mode.
-    # ==========================================
-
-    status = '200 OK'
-    if mode.stprod:
-        if ims:
-            mod_since = rfc822.parsedate(ims)
-            last_modified = time.gmtime(mtime)
-            if last_modified[:6] <= mod_since[:6]:
-                status = '304 Not Modified'
-
-
-    # Set up the response.
-    # ====================
-
-    headers = []
-    headers.append(('Last-Modified', rfc822.formatdate(mtime)))
-    headers.append(('Content-Type', content_type))
-    headers.append(('Content-Length', str(size)))
-
-    start_response(status, headers)
-    if status == '304 Not Modified':
-        return []
-    else:
-        return open(path)
+### uncomment the line below and comment out def static above for comparisons
+#static = _static
 
 
 # Directory Handlers
@@ -118,7 +194,6 @@ td.size {text-align: right;}
 th {text-align: left;}
 tr.even {background: #eee;}
 tr:hover {background: #eef;}
-#footer {font-size: smaller; font-style: italic;}
 
 """
 
@@ -134,19 +209,19 @@ def _get_size(stats):
     """
     size = float(stats[stat.ST_SIZE])
     if size < KB:
-        return '%d &nbsp;&nbsp;&nbsp;B' % (size)
+        return '%d &nbsp;B' % (size)
     elif size < MB:
-        return '%.1f kB' % (size / KB)
+        return '%d kB' % (size / KB)
     elif size < GB:
-        return '%.1f MB' % (size / MB)
+        return '%d MB' % (size / MB)
     elif size < TB:
-        return '%.1f GB' % (size / GB)
+        return '%d GB' % (size / GB)
     elif size < PB:
-        return '%.1f TB' % (size / TB) # :^)
+        return '%d TB' % (size / TB) # :^)
     elif size < EB:
-        return '%.1f PB' % (size / PB) # :^D
+        return '%d PB' % (size / PB) # :^D
     else:
-        return '%.1f EB' % (size / EB) # 8^D
+        return '%d EB' % (size / EB) # 8^D
 
 
 def _get_time(stats):
@@ -223,9 +298,8 @@ def autoindex(environ, start_response):
             i += 1
 
     a('</table>')
-    a('<hr /><div id="footer">This index was brought to you by')
-    a('<a href="http://www.zetadev.com/software/aspen/">')
-    a('Aspen v%s</a>.</div>' % __version__)
+    a('<hr /><i>Generated by <a href="http://www.zetadev.com/software/aspen/">')
+    a('Aspen %s</a>' % __version__)
     a('</body></html>')
 
 
