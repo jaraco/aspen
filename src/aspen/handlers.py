@@ -34,7 +34,7 @@ class _PyScript( object ):
 
 def pyscript( environ, start_response ):
     # NOT WORKING YET!
-    _c = cahce.ModuleCache( max_size=128 )
+    _c = cahce.ModuleCache( max_size=128 ) #@@ MUST talk with cinfig!!!
     return _PyScript( environ, start_response, cahcer=_c )
 
     
@@ -73,16 +73,16 @@ class _Static( object ):
     __metaclass__= cahce.CacherClass
 
     # Any wsgi wep app must be a callable that accepts \
-    #at least environ dict and start_response callable and is
-    #a callable object itself; it's result must be iterable
+    #at least environ dict and start_response callable and
+    #its result must be iterable
 
     # However, python class objects  are callables, because, by default,
     #type metaclass has __call__ defined; therefore, if the class object
     #itself has __iter__ and its __init__ accepts the same arguments (i.e., environ
-    #and start_response, one can employ class object as wsgi.
+    #and start_response), one can employ class object as wsgi.
 
     # Indeed, _Static callable (which happens to be a class) accepts environ, start_response;
-    #when one calls _Static, it results an iterable that happens to be its instance, just
+    #when one calls _Static, it results in an iterable (that happens to be its instance), just
     #as was required by the wsgi spec.
 
     # One has to note that this is a pretty common praxis. See, e.g., the PEP333
@@ -172,7 +172,7 @@ class _Static( object ):
 ##        return open(path)
 
 def static(environ, start_response):
-    _c = cahce.FileCache( max_size=128, mode='rb' )
+    _c = cahce.FileCache( max_size=128, mode='rb' ) #@@ MUST talk with cinfig!!!
     return _Static(environ, start_response, , cahcer=_c)
 
 
