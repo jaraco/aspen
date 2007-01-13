@@ -405,7 +405,7 @@ class CacherClass( type ):
         thus, we're going to use metaclass' __call__
         'cahcer' must be initialized before calling the metaclass.
         """
-        c=kw.get('cahcer', None)
+        c=kw.get('cacher', None)
         if hasattr(cls, '_fc' ) and c is not None:
             setattr(cls, '_fc', c )
         return super( CacherClass, cls ).__call__( cls, *a, **kw )

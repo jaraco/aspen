@@ -28,44 +28,44 @@ def HTTP404(environ, start_response):
 # File Handlers
 # =============
 
-class _PyScript( object ):
-    __metaclass__ = cahce.CacherClass
-    # to be done
-
-def pyscript( environ, start_response ):
-    # NOT WORKING YET!
-    _c = cahce.ModuleCache( max_size=128 ) #@@ MUST talk with cinfig!!!
-    return _PyScript( environ, start_response, cahcer=_c )
+##class _PyScript( object ):
+##    __metaclass__ = cahce.CacherClass
+##    # to be done
+##
+##def pyscript( environ, start_response ):
+##    # NOT WORKING YET!
+##    _c = cahce.ModuleCache( max_size=128 ) #@@ MUST talk with cinfig!!!
+##    return _PyScript( environ, start_response, cahcer=_c )
 
     
 
-##def pyscript(environ, start_response):
-##    """Execute the script pseudo-CGI-style.
-##    """
-##    path = environ['PATH_TRANSLATED']
-##    assert isfile(path)
-##
-##    context = dict()
-##    context['environ'] = environ
-##    context['start_response'] = start_response
-##    context['response'] = []
-##    context['__file__'] = path
-##
-##    try:
-##        exec open(path) in context
-##        response = context['response']
-##    except SystemExit:
-##        pass
-###    except:
-###        start_response( '500 Internal Server Error'
-###                      , [('Content-type', 'text/plain')]
-###                       )
-###        if mode.debdev:
-###            return [traceback.format_exc()]
-###        else:
-###            return ['Internal Server Error']
-##
-##    return response
+def pyscript(environ, start_response):
+    """Execute the script pseudo-CGI-style.
+    """
+    path = environ['PATH_TRANSLATED']
+    assert isfile(path)
+
+    context = dict()
+    context['environ'] = environ
+    context['start_response'] = start_response
+    context['response'] = []
+    context['__file__'] = path
+
+    try:
+        exec open(path) in context
+        response = context['response']
+    except SystemExit:
+        pass
+#    except:
+#        start_response( '500 Internal Server Error'
+#                      , [('Content-type', 'text/plain')]
+#                       )
+#        if mode.debdev:
+#            return [traceback.format_exc()]
+#        else:
+#            return ['Internal Server Error']
+
+    return response
 
 
 
