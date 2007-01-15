@@ -3,7 +3,7 @@ from aspen.handlers import *
 
 
 class _Static( object ):
-    __metaclass__= cahce.CacherClass
+    __metaclass__= cache.CacherClass
 
     # Any wsgi wep app must be a callable that accepts \
     #at least environ dict and start_response callable and
@@ -58,5 +58,5 @@ _cache = None
 def static( environ, start_response ):
     global _cache
     if _cahce is None:        
-        _cache = cahce.FileCache( max_size=conf.cache.get('max_size',128), mode='rb' )
-    return _Static(environ, start_response, , cahcer=_cache)
+        _cache = cahce.FileCache( max_size=aspen.conf.cache.get('max_size',128), mode='rb' )
+    return _Static(environ, start_response, cahcer=_cache)

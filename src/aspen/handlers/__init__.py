@@ -12,4 +12,4 @@ from os.path import isdir, isfile, join
 from aspen import mode, __version__
 from aspen.utils import is_valid_identifier
 
-from aspen import cache, conf
+from aspen import cache
