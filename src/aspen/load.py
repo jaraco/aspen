@@ -46,7 +46,7 @@ __/etc/apps.conf. To wit:
 
 """
 
-class Handler(object):
+class Handler(object):
     """Represent a function that knows how to obey the rules.
 
     Some optimization ideas:
@@ -178,7 +178,7 @@ __/etc/apps.conf. To wit:
         return eval(expression) # e.g.: True or False and not True
 
 
-class Mixin:
+class Mixin:
 
     # Apps
     # ====
