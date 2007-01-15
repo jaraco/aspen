@@ -85,21 +85,69 @@ def full_url(environ):
     Adapted from Ian Bicking's recipe in PEP 333.
 
     """
-    url = [environ['wsgi.url_scheme']]
-    url.append('://')
-    url.append(environ['SERVER_NAME'])
+
+    # Start building the URL.
+    # =======================
+    # http://
+
+    url = [environ['wsgi.url_scheme'], '://']
+
+
+    # Get the host.
+    # =============
+    # http://example.com
+
+    port = None
+    if environ.get('HTTP_X_FORWARDED_HOST'):    # try X-Forwarded-Host header
+        host = environ['HTTP_X_FORWARDED_HOST']
+    elif environ.get('HTTP_HOST'):              # then try Host header
+        host = environ['HTTP_HOST']
+    else:                                       # fall back to SERVER_NAME
+        host = environ['SERVER_NAME']
+        port = environ['SERVER_PORT']
+
+
+    # Get the port.
+    # =============
+    # http://example.com:8080
+
+    if port is None: # i.e., using X-Forwarded-Host or Host
+        if ':' in host:
+            assert host.count(':') == 1 # sanity check
+            host, port = host.split(':')
+        else:
+            port = (environ['wsgi.url_scheme'] == 'http') and '80' or '443'
+
+
+    # Add host and port to the url.
+    # =============================
+
+    url.append(host)
     if environ['wsgi.url_scheme'] == 'https':
-        if environ['SERVER_PORT'] != '443':
-           url.extend([':', environ['SERVER_PORT']])
+        if port != '443':
+           url.extend([':', port])
     else:
         assert environ['wsgi.url_scheme'] == 'http' # sanity check
-        if environ['SERVER_PORT'] != '80':
-           url.extend([':', environ['SERVER_PORT']])
+        if port != '80':
+           url.extend([':', port])
 
-    url.append(urllib.quote(environ.get('SCRIPT_NAME','')))
-    url.append(urllib.quote(environ.get('PATH_INFO','')))
+
+    # Add any path info and querystring.
+    # ==================================
+    # http://example.com:8080/foo/bar?baz=buz
+
+    script_name = urllib.quote(environ.get('SCRIPT_NAME', ''))
+    path_info = urllib.quote(environ.get('PATH_INFO', ''))
+    if script_name == path_info == '':
+        url.append('/')
+    else:
+        url.extend([script_name, path_info])
     if environ.get('QUERY_STRING'):
-        url.append('?' + environ['QUERY_STRING'])
+        url.extend(['?', environ['QUERY_STRING']])
+
+
+    # Put it all together.
+    # ====================
 
     return ''.join(url)
 
@@ -114,5 +162,3 @@ def translate(root, url):
 if __name__ == '__main__':
     import doctest
     doctest.testmod()
-
-

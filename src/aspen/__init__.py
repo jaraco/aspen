@@ -115,13 +115,9 @@ def server_factory(configuration):
     globals_['paths'] = configuration.paths
     configuration.load_plugins() # user modules loaded here
     website = Website(configuration)
-    for app in configuration.middleware:
-        website = app(website)
-    server = Server( configuration.address
-                   , website
-                   , configuration.threads
-                   , configuration.server_name
-                    )
+    for middleware in configuration.middleware:
+        website = middleware(website)
+    server = Server(configuration.address, website, configuration.threads)
 
 
     # Monkey-patch server to support restarting.
