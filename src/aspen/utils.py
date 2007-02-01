@@ -178,6 +178,32 @@ def translate(root, url):
     parts = [root] + url.lstrip('/').split('/')
     return realpath(os.sep.join(parts))
 
+class StaticResource( object ):
+    def __init__( self, filename, chunk_size = 8192 ):
+        self._fp = open( filename, 'rb' )  
+        self._ch_size = int(chunk_size   )
+        from aspen import mode
+        if mode.debugging:
+            print 'static resource called'
+        
+        
+
+    def __iter__( self ):
+        return self
+
+    def next( self ): 
+        chunk = self._fp.read( self._ch_size )
+        if not chunk:
+            raise StopIteration
+        return chunk
+        
+    def close( self ):
+        try:
+            os.close(self._fp)
+        except:
+            pass
+        self._fp = None
+
 
 if __name__ == '__main__':
     import doctest

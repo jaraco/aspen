@@ -7,7 +7,8 @@ import stat
 import time
 from os.path import isfile
 
-from aspen import mode
+from aspen import mode, conf
+
 
 
 def static(environ, start_response):
@@ -57,5 +58,15 @@ def static(environ, start_response):
     start_response(status, headers)
     if status == '304 Not Modified':
         return []
-    else:
-        return open(path)
+    else:        
+        chunk_size = int(getattr( conf, 'statics', {} ).get( 'chunk_size', 0 ))
+        if chunk_size !=0:
+            if mode.debugging:
+                print 'chunk configured: ' , chunk_size
+            chunk_size=int(chunk_size)
+            from aspen.utils import StaticResource
+            return StaticResource( path, chunk_size )
+        else:
+            if mode.debugging:
+                print 'chunk not configured'
+            return open(path)
