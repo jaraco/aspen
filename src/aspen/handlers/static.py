@@ -140,5 +140,4 @@ def static(environ, start_response):
     if status == '304 Not Modified':
         return []
     else:
-        #return open(path)
         return Resource(path)
