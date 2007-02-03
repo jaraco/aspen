@@ -19,7 +19,7 @@ from aspen.exceptions import ConfigError
 # ----------
 
 val = conf.static.get('chunk_size', 8192)
-if not str(val).isdigit() or (val < 1):
+if not str(val).isdigit() or (int(val) < 1):
     raise ConfigError( "chunk_size must be an integer greater than 0"
                      , "__/etc/aspen.conf"
                      , "<?>" # lineno
@@ -56,6 +56,11 @@ class Resource(object):
 
       - closing the file when we're done done with it
       - logging
+      - serving a raw open() file on Windows doesn't work w/ wsgiserver.py
+
+    For documentation on this last item, look at aspen-users around Jan 31,
+    2007.
+
 
     """
 
@@ -76,7 +81,6 @@ class Resource(object):
 
     def close(self):
         try:
-            #os.close(self._fp)
             if mode.debdev:
                 elapsed = datetime.datetime.now() - self._start
                 print "static content delivered in %s sec" % str(elapsed)
