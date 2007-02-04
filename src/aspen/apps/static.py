@@ -1,6 +1,6 @@
 from os.path import isdir, isfile
 
-from aspen import configuration
+from aspen import configuration, conf
 from aspen.handlers.static import static as static_handler
 from aspen.utils import find_default, translate
 
@@ -8,8 +8,10 @@ from aspen.utils import find_default, translate
 def static(environ, start_response):
     """This makes the static handler available as a full-blown application.
     """
-    environ['PATH_TRANSLATED'] = translate( environ['PATH_TRANSLATED']
-                                          , environ['PATH_INFO']
+    root = conf.statics.get('doc_root', environ['PATH_TRANSLATED'])
+    
+    environ['PATH_TRANSLATED'] = translate( root,
+                                           environ['PATH_INFO']
                                            )
     fspath = find_default(configuration.defaults, environ)
     if isdir(fspath):
