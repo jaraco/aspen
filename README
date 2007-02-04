@@ -1,0 +1,21 @@
+INTRODUCTION
+
+  asPylons is a tiny shim that makes it trivially easy to serve Pylons apps with 
+  Aspen. Aspen is a Python webserver, a good fit for pure-HTTP Pylons deployment.
+
+    http://code.google.com/p/aspen-commons/wiki/Stephane - a django app runner on aspen
+    http://www.zetadev.com/software/aspen/
+ 
+
+QUICK START
+
+  1. Make sure that your Pylons app runs ok outside aspen;
+  2a. Edit __/etc/aspen.conf, and set inifile to that of your Pylons app:
+  [pylons]
+  inifile = /abs/path/to/the/inifile
+  2b.
+  set in apps.conf
+  / aspylons:pylons_app
+  2c.
+  put aspylons.py in __/etc/lib/python2.x
+  3. Start aspen in the parent of __.
