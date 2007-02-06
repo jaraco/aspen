@@ -11,6 +11,7 @@ restarting options. Here are the objects defined below:
 
 """
 import base64
+import logging
 import os
 import signal
 import socket
@@ -45,6 +46,9 @@ __all__ = ['configuration', 'conf', 'paths', '']
 configuration = None # an aspen._configuration.Configuration instance
 conf = None # an aspen._configuration.ConfFile instance
 paths = None # an aspen._configuration.Paths instance
+
+
+log = logging.getLogger('aspen')
 
 
 def get_perms(path):
@@ -84,7 +88,7 @@ def get_perms(path):
         last_pidcheck = 0
         while not self.stop.isSet():
             if not isfile(self.path):
-                print "no pidfile; recreating"
+                log.info("no pidfile; recreating")
                 sys.stdout.flush()
                 self.write()
             elif (last_pidcheck + self.pidcheck_timeout) < time.time():
@@ -101,13 +105,13 @@ pidfiler = PIDFiler() # must actually set pidfiler.path before starting
 
 def register_cleanup(func):
     CLEANUPS.append(func)
-    
+
 def cleanup():
     if CLEANUPS:
-        print "cleaning up ..."
+        log.info("cleaning up ...")
         for func in CLEANUPS:
             func()
-        
+
 
 globals_ = globals()
 def server_factory(configuration):
@@ -141,7 +145,7 @@ def server_factory(configuration):
         def tick():
             Server.tick(server)
             if restarter.should_restart():
-                print "restarting ..."
+                log.info("restarting ...")
                 server.stop()
                 cleanup()
                 raise SystemExit(75)
@@ -162,7 +166,7 @@ def start_server(configuration):
     # ================================================
 
     def shutdown(signum, frame):
-        print "stopping server"
+        log.info("stopping server")
         sys.stdout.flush()
         server.stop()
         cleanup()
@@ -171,7 +175,7 @@ def start_server(configuration):
                 try:
                     os.remove(configuration.address)
                 except EnvironmentError, exc:
-                    print "error removing socket:", exc.strerror
+                    log.warn("error removing socket:", exc.strerror)
         if pidfiler.isAlive():                              # we're a daemon
             pidfiler.stop.set()
             pidfiler.join()
@@ -185,7 +189,7 @@ def start_server(configuration):
     # We could do a try/finally here to shut down cleanly in case of bugs, but
     # then we'd have less incentive to fix the bugs, wouldn't we? :^)
 
-    print "aspen starting on %s" % str(configuration.address)
+    log.info("aspen starting on %s" % str(configuration.address))
     sys.stdout.flush()
     server.start()
 
@@ -236,13 +240,13 @@ def start_server(configuration):
         # ============
 
         if not isfile(pidfile):
-            print "daemon not running"
+            log.warn("daemon not running")
             raise SystemExit(1)
         data = open(pidfile).read()
         try:
             pid = int(data)
         except ValueError:
-            print "mangled pidfile: '%r'" % data
+            log.error("mangled pidfile: '%r'" % data)
             raise SystemExit(1)
 
 
@@ -257,7 +261,7 @@ def start_server(configuration):
             try:
                 os.kill(pid, sig)
             except OSError, exc:
-                print str(exc)
+                log.warn(str(exc))
                 raise SystemExit(1)
 
         nattempts = 0
@@ -266,10 +270,12 @@ def start_server(configuration):
             if nattempts == 0:
                 kill(signal.SIGTERM)
             elif nattempts == 1:
-                print "%d still going; resending SIGTERM" % pid
+                log.warn("%d still going; resending SIGTERM" % pid)
                 kill(signal.SIGTERM)
             elif nattempts == 2:
-                print "%d STILL going; sending SIGKILL and quiting" % pid
+                log.critical( "%d STILL going; sending SIGKILL and " % pid
+                            + "quitting"
+                             )
                 kill(signal.SIGKILL)
                 raise SystemExit(1)
             nattempts += 1
@@ -289,7 +295,9 @@ def start_server(configuration):
 
     if configuration.command == 'start':
         if isfile(pidfile):
-            print "pidfile already exists with pid %s" % open(pidfile).read()
+            log.critical( "pidfile already exists with pid "
+                        + open(pidfile).read()
+                         )
             raise SystemExit(1)
         start()
 
@@ -301,7 +309,7 @@ def start_server(configuration):
             os.system(command)
             raise SystemExit(0)
         else:
-            print "daemon not running"
+            log.critical("daemon not running")
             raise SystemExit(0)
 
     elif configuration.command == 'stop':
@@ -331,7 +339,7 @@ def start_server(configuration):
         if configuration.daemon:
             drive_daemon(configuration)
         elif mode.DEBDEV and restarter.PARENT:
-            print 'launching child process'
+            log.info("launching child process")
             restarter.launch_child()
         elif restarter.CHILD:
 
@@ -348,10 +356,10 @@ def start_server(configuration):
                     if isfile(path):
                         restarter.track(path)
 
-            print 'starting child server'
+            log.info("starting child server")
             start_server(configuration)
         else:
-            print 'starting server'
+            log.info("starting server")
             start_server(configuration)
 
     except KeyboardInterrupt:

@@ -3,36 +3,34 @@ import os
 import sys
 from os.path import exists, isdir, isfile, join
 
-from aspen import mode
-from aspen.exceptions import HandlerError
-from aspen.utils import check_trailing_slash, find_default, translate
+from aspen.utils import check_trailing_slash, translate
 
 
 log = logging.getLogger('aspen.website')
 
 
-class Website:
+class Website:
     """Represent a publication, application, or hybrid website.
     """
 
     def __init__(self, configuration):
-        self.configuration = configuration
-        self.root = self.configuration.paths.root
+        self.apps = configuration.apps
+        self.__ = configuration.paths.__
+        self.root = configuration.paths.root
 
-
-    # Main Dispatcher
-    # ===============
 
     def __call__(self, environ, start_response):
         """Main WSGI callable.
         """
+        log.debug('called')
+
 
         # Translate the request to the filesystem.
         # ========================================
 
-        fspath = translate(self.configuration.paths.root, environ['PATH_INFO'])
-        if self.configuration.paths.__ is not None:
-            if fspath.startswith(self.configuration.paths.__): # protect magic dir
+        fspath = translate(self.root, environ['PATH_INFO'])
+        if self.__ is not None:
+            if fspath.startswith(self.__): # protect magic dir
                 start_response('404 Not Found', [])
                 return ['Resource not found.']
         environ['PATH_TRANSLATED'] = fspath
@@ -44,30 +42,19 @@ log = logging.getLogger('aspen.website')
         app = self.get_app(environ, start_response) # 301
         if isinstance(app, list):                           # redirection
             response = app
-        elif app is not None:                               # app
+        elif app is None:                                   # no app found
+            log.debug("No app found for '%s'" % environ['PATH_INFO'])
+            start_response( "500 Internal Server Error"
+                          , [('Content-Type', 'text/plain')]
+                           )
+            response = ["Server got itself in trouble."]
+        else:                                               # app
             response = app(environ, start_response) # WSGI
-        elif not exists(fspath):                            # 404 NOT FOUND
-            start_response('404 Not Found', [])
-            response = ['Resource not found.']
 
 
-        # Dispatch to a handler.
-        # ======================
-
-        else:                                               # handler
-            response = check_trailing_slash(environ, start_response)
-            if response is None: # no redirection
-                fspath = find_default(self.configuration.defaults, environ)
-                handler = self.get_handler(fspath)
-                response = handler.handle(environ, start_response) # WSGI
-
+        log.debug('responding')
         return response
 
-
-    # Plugin Retrievers
-    # =================
-    # Unlike the middleware stack, apps and handlers need to be located
-    # per-request.
 
     def get_app(self, environ, start_response):
         """Given a WSGI environ, return the first matching app.
@@ -78,7 +65,7 @@ log = logging.getLogger('aspen.website')
         if not match_against.endswith('/'):
             match_against += '/'
 
-        for app_urlpath, _app in self.configuration.apps:
+        for app_urlpath, _app in self.apps:
 
             # Do basic validation.
             # ====================
@@ -111,18 +98,4 @@ log = logging.getLogger('aspen.website')
             app = _app
             break
 
-        if app is None:
-            log.debug("No app found for '%s'" % environ['PATH_INFO'])
-
         return app
-
-
-    def get_handler(self, pathname):
-        """Given a full pathname, return the first matching handler.
-        """
-        for handler in self.configuration.handlers:
-            if handler.match(pathname):
-                return handler
-
-        log.warn("No handler found for filesystem path '%s'" % pathname)
-        raise HandlerError("No handler found.")

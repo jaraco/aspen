@@ -112,7 +112,7 @@ def static(environ, start_response):
         call = AUTOINDEX and autoindex or HTTP403
         return call(environ, start_response)
     else:
-        assert isfile(environ['PATH_TRANSLATED']) # sanity check
+        assert isfile(path) # sanity check
 
 
     # Get basic info from the filesystem and start building a response.

@@ -1,4 +1,5 @@
 import inspect
+import logging
 import os
 import string
 import urllib
@@ -61,6 +62,7 @@ def cmp_routines(f1, f2):
 # Paths
 # =====
 
+log_cts = logging.getLogger("aspen.utils.check_trailing_slash")
 def check_trailing_slash(environ, start_response):
     """Given WSGI stuff, return None or 301.
 
@@ -73,12 +75,14 @@ def check_trailing_slash(environ, start_response):
     if isdir(fs) and not url.endswith('/'):
         environ['PATH_INFO'] += '/'
         new_url = full_url(environ)
+        log_cts.info(new_url)
         start_response( '301 Moved Permanently'
                       , [('Location', new_url)]
                        )
         return ['Resource moved to: ' + new_url]
 
 
+log_find_default = logging.getLogger("aspen.utils.find_default")
 def find_default(defaults, environ):
     """Given a list of defaults and a WSGI environ, update the environ.
 
@@ -96,9 +100,11 @@ def find_default(defaults, environ):
                 break
         if default is not None:
             environ['PATH_TRANSLATED'] = fspath = default
+    log_find_default.info(fspath)
     return fspath
 
 
+log_full_url = logging.getLogger("aspen.utils.full_url")
 def full_url(environ):
     """Given a WSGI environ, return the full URL of the request.
 
@@ -169,14 +175,19 @@ def full_url(environ):
     # Put it all together.
     # ====================
 
-    return ''.join(url)
+    full_url = ''.join(url)
+    log_full_url.info(full_url)
+    return full_url
 
 
+log_translate = logging.getLogger("aspen.utils.translate")
 def translate(root, url):
     """Translate a URL to the filesystem.
     """
     parts = [root] + url.lstrip('/').split('/')
-    return realpath(os.sep.join(parts))
+    translated = realpath(os.sep.join(parts))
+    log_translate.info(translated)
+    return translated
 
 
 if __name__ == '__main__':

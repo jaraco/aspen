@@ -432,13 +432,12 @@ optparser.add_option( "-r", "--root"
         # Currently we just support throttling from the command line based on
         # subsystem and level.
 
+        logging.basicConfig(level=logging.DEBUG)
+        log.debug("logging configured")
 
-#        #logging.basicConfig(format=FORMAT)
-#
 #        handler = logging.StreamHandler()
 #        handler.addFilter(logging.Filter(self.opts.log_filter))
 #        form = logging.Formatter(logging.BASIC_FORMAT)
 #        handler.setFormatter(form)
 #        logging.root.addHandler(handler)
 #        logging.root.setLevel(self.opts.log_level)
-#        log.debug("logging configured")
