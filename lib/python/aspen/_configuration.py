@@ -18,7 +18,7 @@ import optparse
 import ConfigParser
 from os.path import join, isdir, realpath
 
-from aspen import load, mode
+from aspen import mode
 
 
 log = logging.getLogger('aspen.configuration')
@@ -308,7 +308,7 @@ optparser.add_option( "-r", "--root"
             yield self[k]
 
 
-class Configuration(load.Mixin):
+class Configuration(object):
     """Aggregate configuration from several sources.
     """
 

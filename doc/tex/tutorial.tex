@@ -31,9 +31,9 @@ Aspen uses \dfn{handlers} to process files such as your \file{index.html}. Now
 we are going to write our own handler.
 
 First, create a directory under \file{aspentut} named \file{__} (that's two
-underscores). This is \file{aspentut}'s \dfn{magic directory}, and it is where
+underscores). This is \file{aspentut}'s \dfn{junk drawer}, and it is where
 you configure and extend your website. Now create two directories under the
-magic directory: \file{etc} and \file{lib}. Under \file{lib}, create a
+junk drawer: \file{etc} and \file{lib}. Under \file{lib}, create a
 \file{python2.x} directory, where \file{x} corresponds to the minor version of
 Python you are using. Your directory structure should now look like this:
 
@@ -87,7 +87,7 @@ In this brief tutorial we've introduced these key facts about Aspen:
 
 \begin{itemize}
 \item{Aspen websites use the filesystem for site hierarchy.}
-\item{Aspen websites are configured and extended via a "magic directory."}
+\item{Aspen websites are configured and extended via a "junk drawer."}
 \item{Aspen configuration happens through plain-text configuration files.}
 \item{Aspen extensions are WSGI callables.}
 \end{itemize}

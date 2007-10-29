@@ -1,10 +1,81 @@
 \chapter{User Interface (UI) \label{interface}}
 
-Users interface with Aspen through three mechanisms: the command line,
-configuration files, and the environment. Where a program parameter is set in
-more than one of these contexts, they take precedence in the order given here.
-For example, a \var{mode} option on the command line will override any
-\var{mode} setting in a config file or in the environment.
+Users interact with the Aspen web server through four mechanisms: a filesystem
+directory structure, command line arguments and options, configuration files,
+and the environment. Where a given program parameter is set in more than one of
+these contexts, they take precedence in the order given here. For example, a
+\var{mode} option on the command line will override any \var{mode} setting in a
+config file or in the environment.
+
+
+\section{Directory Structure \label{directory-structure}}
+
+An \dfn{Aspen website} is, in respect of your filesystem, a directory on that
+filesystem (in respect of the World Wide Web, an Aspen website is the website as
+experienced through the Web). An Aspen website has a certain filesystem layout,
+the specifics of which depend on the type of website you are building (recall
+the discussion of types of website in the
+\ulink{Introduction}{./introduction.html}).
+
+You will find API at \ulink{aspen.paths}{./api-paths.html} for accessing certain
+standard filesystem paths at and under your Aspen website.
+
+
+\subsection{Application Websites} \label{directories-application}
+
+If you are building an \var{application} website, then Aspen expects the
+following directory structure underneath your website's root directory on the
+filesystem:
+
+\begin{verbatim}
+etc/
+lib/python/
+\end{verbatim}
+
+Any of Aspen's \ulink{configuration files}{./config-files.html} are located in
+\file{etc}. Website-specific Python modules and packages are stored in
+\file{lib/python}, and Aspen adds this directory to \var{sys.path} (as well as
+\file{lib/python/site-packages}, if that exists). You are free to add to this
+directory structure. For example, you might choose to store data files for your
+website in a \file{var} directory, or you might store helper scripts associated
+with your website in a \file{bin} directory. As you may recognize, an Aspen
+application-website directory is patterned after the traditional \UNIX{} layout.
+Aspen comes with a tool, \ulink{\program{workingenv}}{./workingenv.html}, which
+aids development and deployment by turning this userland into an isolated
+sandbox.
+
+Aspen decides to serve your website as an application based on the existence of
+a file at \file{etc/aspen.conf}. Without that file, Aspen will serve your
+website as a publication/hybrid website, and as a result the \file{etc}
+directory is also a requirement for application websites.  The \file{lib/python}
+directory, on the other hand, is not required, and you may choose to install
+some or all of your site-specific Python libraries anywhere on
+\envvar{PYTHONPATH}.
+
+
+\subsection{Publication and Hybrid Websites} \label{directories-pub-hybrid}
+
+For \var{publication} and \var{hybrid} websites, Aspen uses your operating
+system's filesystem to model the hierarchical organization of your site. In this
+case, URLs map literally to your website's root directory. Aspen therefore takes
+the directories which under a pure application website would be directly under
+your root directory---takes and puts them in a so-called \dfn{junk drawer}
+directory named \file{__} (that's two underscores). So here would be a minimal
+publication/hybrid directory layout (also showing a common homepage file):
+
+\begin{verbatim}
+__/etc/
+__/lib/python/
+index.html
+\end{verbatim}
+
+The existence and contents of the junk drawer are hidden from prying eyes,
+because Aspen will respond to any requests mapping at or below the junk drawer
+with a \ulink{\code{404 Not
+Found}}{http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10.4.5}.
+
+Aspen serves any website that has neither junk drawer nor \file{etc/aspen.conf}
+file as an unconfigured publication website.
 
 
 \section{Command Line \label{command-line}}
@@ -21,13 +92,13 @@ The default is \code{runfg}, which causes Aspen to run in the foreground,
 sending all messages to stdout.
 
 \code{start}, \code{status}, \code{stop}, and \code{restart} control Aspen as a
-daemon, via a pidfile. If the website root has a directory named \file{__}
-(that's two underscores; the \dfn{magic directory}), then the pidfile is at
-\file{__/var/aspen.pid}. Otherwise, the pidfile is created in \file{/tmp}. When
-run as a daemon, stdout and stderr are redirected to \file{__/var/aspen.log} if
-\file{__} exists, and to \file{/dev/null} otherwise. The \file{__/var} directory
-will be created if it does not exist. The permission mode of the pidfile is set
-to \code{0600}; likewise with the logfile, unless it is \file{/dev/null}.
+daemon via a pidfile. If the website is an application or has a junk drawer,
+then the pidfile is at \file{var/aspen.pid} or \file{__/var/aspen.pid},
+respectively; otherwise, the pidfile is created in \file{/tmp}. Likewise, stdout
+and stderr are redirected to \file{var/aspen.log} or \file{__/var/aspen.log},
+respectively, or to \file{/dev/null}. The \file{var} directory will be created
+if it does not exist. The permission mode of the pidfile is set to \code{0600},
+as is that of the log file if it is not \file{/dev/null}.
 
 The Aspen distribution includes a script in \file{etc/aspen_bash_completion}
 that can be used to configure the bash shell to autocomplete from among Aspen's
@@ -67,16 +138,17 @@ Aspen's command-line options are as follows:
 
 \end{tableiii}
 
-
 \section{Configuration Files \label{config-files}}
 
-Aspen obeys several configuration files, all located in \file{__/etc}. The
-comment character for these files is \#, and comments can be included in-line.
-Blank lines are ignored, as is initial and trailing whitespace per-line. Where
-section names are called for, they are given in brackets.
+Aspen obeys several configuration files, all located in \file{etc} (for
+application websites, that is; for publication/hybrid sites with a junk drawer,
+substitute \file{__/etc} here and passim). The comment character for these files
+is \#, and comments can be included in-line. Blank lines are ignored, as is
+initial and trailing whitespace per-line. Where section names are called for,
+they are given in brackets.
 
 Where a configuration file calls for a Python object to be specified, this is
-done in a notation derived from setuptools' entry_points feature: a dotted
+done in a notation derived from setuptools' \var{entry_points} feature: a dotted
 module name, followed by a colon and a dotted identifier naming an object within
 the module. This is referred to below as \dfn{colon notation}. The following
 example would import the \code{bar} object from \code{example.package.foo}, and
@@ -93,7 +165,8 @@ example.package.foo:bar.baz
 \label{apps-conf}
 
 In Aspen, an \dfn{application} or \dfn{app} refers to a WSGI application that is
-connected to a particular directory. Apps are set up in \file{__/etc/apps.conf}.
+mounted on a particular filesystem directory. Apps are set up in
+\file{__/etc/apps.conf}.
 
 The \file{__/etc/apps.conf} file contains a newline-separated list of
 white-space-separated path name/object name pairs. The path names refer to
@@ -205,7 +278,7 @@ knob = true
 
 Aspen \dfn{handlers} are WSGI applications that are associated with files and
 directories on the filesystem according to arbitrary rules. This provides a
-flexible infrastructure for many different development patterns.
+flexible infrastructure for many different software engineering patterns.
 
 The \file{__/etc/handlers.conf} file begins with an anonymous "rules" section,
 which is a newline-separated list of white-space-separated rule name/object name
@@ -282,7 +355,7 @@ Aspen allows for a full WSGI middleware stack, configured via the
 middleware factories in colon notation. Each factory (which may be a class
 constructor or other callable) is called with exactly one positional argument,
 the next middleware on the stack. The first-mentioned middleware will therefore
-be the outer-most in the stack (i.e., closest to the browser).
+be the top-most on the stack (i.e., closest to the browser).
 
 
 \subsubsection{Example middleware.conf}

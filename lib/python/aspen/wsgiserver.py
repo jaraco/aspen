@@ -908,7 +908,10 @@ class CherryPyWSGIServer(object):
             return
         except socket.error, x:
             msg = x.args[1]
-            if msg in ("Bad file descriptor", "Socket operation on non-socket"):
+            if msg in ( "Bad file descriptor"
+                      , "Socket operation on non-socket"
+                      , "Software caused connection abort" # http://code.google.com/p/aspen/issues/detail?id=111
+                       ):
                 # Our socket was closed.
                 return
             if msg == "Resource temporarily unavailable":

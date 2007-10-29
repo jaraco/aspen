@@ -33,7 +33,7 @@ log = logging.getLogger('aspen.website')
         hide = False
         fspath = translate(self.configuration.paths.root, environ['PATH_INFO'])
         if self.configuration.paths.__ is not None:
-            if fspath.startswith(self.configuration.paths.__):  # magic dir
+            if fspath.startswith(self.configuration.paths.__):  # junk drawer
                 hide = True
         if basename(fspath) == 'README.aspen':                  # README.aspen
             hide = True
@@ -121,14 +121,3 @@ log = logging.getLogger('aspen.website')
             log.debug("No app found for '%s'" % environ['PATH_INFO'])
 
         return app
-
-
-    def get_handler(self, pathname):
-        """Given a full pathname, return the first matching handler.
-        """
-        for handler in self.configuration.handlers:
-            if handler.match(pathname):
-                return handler
-
-        log.warn("No handler found for filesystem path '%s'" % pathname)
-        raise HandlerError("No handler found.")

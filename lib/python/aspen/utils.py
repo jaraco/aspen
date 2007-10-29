@@ -6,6 +6,12 @@ import urllib
 from os.path import isdir, isfile, join, realpath
 
 
+# This is helpful in config file parsing.
+# =======================================
+
+clean = lambda x: x.split('#',1)[0].strip() # clears comments & whitespace
+
+
 INITIAL = '_' + string.letters
 INNER = INITIAL + string.digits
 def is_valid_identifier(s):

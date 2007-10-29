@@ -14,7 +14,7 @@ The \module{aspen.handlers.autoindex} module defines one function:
 \begin{funcdesc}{wsgi}{environ, start_response} This handler displays an HTML
 listing of the files in the directory at \code{environ['PATH_TRANSLATED']}. If
 it is associated with a non-directory, it will raise \class{AssertionError}. The
-listing will not include the magic directory, nor files named
+listing will not include the junk drawer, nor files named
 \file{README.aspen}, nor hidden files (those whose name begins with '\file{.}').
 \end{funcdesc}
 
@@ -22,43 +22,167 @@ The static handler can be configured to automatically call the autoindex handler
 for all directories. See below for details.
 
 
-\subsection{\class{django_}}
-\label{api-handlers-django}
+\subsection{\class{simplates}}
+\label{api-handlers-simplates}
 
-Aspen comes bundled with glue code for the Django web framework. In addition to
-the \module{aspen.apps.django_} app, which serves Django in usual monolithic
-fashion, we also provide handlers for serving Django scripts and templates. This
-requires that you install Django for your site:
+Aspen comes bundled with a handler called simplates. In basic terms, a
+\dfn{simplate} is a single-file web template with an initial pure-Python section
+that populates the context for the template. Simplates are a way to keep logic
+and presentation as close together as possible without actually mixing them.
+
+In more detail, a \dfn{simplate} is a template with two optional Python
+components at the head of the file, delimited by ASCII form feeds (this
+character is also called a page break, FF, <ctrl>-L, 0xc, 12). If there are two
+initial Python sections, then the first is \code{exec}'d when the simplate is
+first loaded, and the namespace it populates is saved for all subsequent
+invocations of this simplate. This is the place to do imports and set constants;
+it is referred to as the simplate's \dfn{import section} (be sure the objects
+defined here are thread-safe). The second Python section, or the first if there
+is only one, is \code{exec}'d within the simplate namespace each time the
+simplate is invoked; it is called the \dfn{run-time Python section}. The third
+section is parsed according to one of the various web templating languages. The
+namespace for the template section is a copy of the import section's namespace,
+further modified by the run-time Python section. If a simplate has no Python
+sections at all, then the template section is rendered with an empty context.
+no\class{SyntaxError} is raised when parsing a simplate that has more than two
+form feeds.
+
+In debugging and development modes, simplates are loaded for each invocation of
+the resource. In staging and production modes, simplates are loaded and cached
+until the filesystem modification time of the underlying file changes. If
+parsing the file into a simplate raises an \class{Exception}, then that is
+cached as well, and will be raised on further calls until the entry expires as
+usual.
+
+Simplates obey an \var{encoding} key in a \code{[simplates]} section of
+\file{aspen.conf}: this is the character encoding used when reading simplates
+off the filesystem, and it defaults to \code{'UTF-8'}.
+
+For all simplates, the full filesystem path of the simplate is placed in its
+namespace as \var{__file__} before the import section is executed.
+
+\textbf{NB: Simplates are never used in the abstract.} Rather, one always uses a
+particular flavor of simplate that obeys the above general rules but which
+provides slightly different semantics corresponding to the web framework upon
+which each flavor is based. The Aspen distribution currently bundles two flavors
+of simplate: Django-flavored and stdlib-flavored.
+
+\subsubsection{django_}
+\label{api-handlers-simplates-django}
+
+
+In addition to the \module{aspen.apps.django_} app, which serves Django in usual
+monolithic fashion, we also provide a handler that integrates the Django web
+framework with the simplate pattern.
+
+
+\paragraph{Installation}
+
+To use Django simplates, first install the Django framework in your site:
 
 \begin{itemize}
 \item{Put \module{django} on your \envvar{PYTHONPATH} (e.g., in \file{__/lib/python}).}
 \item{Put your Django project on your \envvar{PYTHONPATH} (e.g., in \file{__/lib/python}).}
 \item{Add a \code{[django]} section to \file{aspen.conf}, with a \var{settings_module} key that points to your \module{settings} module.}
-\item{Configure your Django project's \file{settings} module.}
+\item{Configure any database settings, etc., in your Django project's \file{settings} module.}
 \end{itemize}
 
-The \module{aspen.handlers.django_} module defines two functions:
+The \module{aspen.handlers.simplates.django_} module defines one public
+function:
 
-\begin{funcdesc}{script}{environ, start_response} This handler executes
-\code{environ['PATH_TRANSLATED']} within a \ulink{Django
-\class{RequestContext}}{http://www.djangobook.com/en/beta/chapter10/#cn62}. The
-\module{django.http} module is added to the namespace as \var{http} (for easy
-access to \module{HttpResponse} subclasses), and a Django \code{HttpResponse} as
-\var{response}. \end{funcdesc}
+\begin{funcdesc}{wsgi}{environ, start_response} Serve
+\code{environ['PATH_TRANSLATED']} as a Django-flavored simplate.\end{funcdesc}
 
-\begin{funcdesc}{template}{environ, start_response} This handler renders
-\code{environ['PATH_TRANSLATED']} as a Django template within a \ulink{Django
-\class{RequestContext}}{http://www.djangobook.com/en/beta/chapter10/#cn62}.
-\end{funcdesc}
+You must tell Aspen to use this handler for various files via the
+\file{__/etc/handlers.conf} file. For example, the following
+\file{handlers.conf} would serve files ending in \file{.html} as Django
+simplates, and would serve all other resources statically:
 
-In staging and production modes, the result of compiling both scripts and
-templates is cached after the first time each is called.
+\begin{verbatim}
+fnmatch     aspen.rules:fnmatch
+catch_all   aspen.rules:catch_all
+
+[aspen.handlers.simplates.django_:wsgi]
+fnmatch *.html
+
+[aspen.handlers.static:wsgi]
+catch_all
+\end{verbatim}
+
+Lastly, close the loop by telling Django about simplates via the \file{urls.py}
+file in your Django project package, like so:
+
+\begin{verbatim}
+from django.conf.urls.defaults import *
+
+urlpatterns = patterns('',
+     (r'^', include('aspen.handlers.simplates.django_'))
+)
+\end{verbatim}
+
+Admittedly, that is a fair amount of wiring. The main benefit to using Django
+via Aspen simplates is that you get filesystem- rather than regex-based URL
+layouts.
+
+
+\paragraph{Distinctives}
+
+Django-flavored simplates have these distinctives:
+
+\begin{itemize}
+
+\item{The simplate namespace is a \ulink{Django
+\class{RequestContext}}{http://www.djangobook.com/en/beta/chapter10/#cn62}.}
+
+\item{The template section is compiled as a \ulink{Django
+template}{http://www.djangobook.com/en/beta/chapter04/#cn116}.}
+
+\item{If the run-time section raises \class{SystemExit} with a Django
+\class{HttpResponse} object as its argument, and no other \var{response} object
+is defined in the section, then the \class{SystemExit} response is sent back and
+the templating section is skipped entirely.}
+
+\item{If the run-time section raises \class{SystemExit} without a Django
+\class{HttpResponse} object as its argument, and no other \var{response} object
+is defined in the section, then processing of the run-time section ends and
+processing proceeds to rendering the template.}
+
+\item{If the run-time section defines a \var{response} object, then (whether or
+not the run-time section is terminated with \class{SystemExit}) this object is
+assumed to be a Django \class{HttpResponse} object, and the template is rendered
+to it.}
+
+\end{itemize}
+
+
+\subsubsection{stdlib}
+\label{api-handlers-simplates-stdlib}
+
+Aspen includes a simplate flavor that has no dependencies outside the standard
+library. The handler for this is in the \module{aspen.handlers.simplates.stdlib}
+module:
+
+\begin{funcdesc}{wsgi}{environ, start_response} Serve
+\code{environ['PATH_TRANSLATED']} as a stdlib-flavored simplate.\end{funcdesc}
+
+\begin{itemize}
+\item{the simplate namespace is a dictionary with two special keys,
+\var{environ} and \var{start_response}, corresponding directly to the parameters
+of the handler as defined above.}
+\item{the template section is compiled as a Django template}
+\end{itemize}
+
+
 
 
 \subsection{\class{http}}
 \label{api-handlers-http}
 
 The \module{aspen.handlers.http} module provides two handlers:
+
+\begin{funcdesc}{HTTP400}{environ, start_response}
+Responds to every request with \code{400 Bad Request}.
+\end{funcdesc}
 
 \begin{funcdesc}{HTTP403}{environ, start_response}
 Responds to every request with \code{403 Forbidden}.
@@ -68,27 +192,8 @@ Responds to every request with \code{403 Forbidden}.
 Responds to every request with \code{404 Not Found}.
 \end{funcdesc}
 
-
-\subsection{\class{pyscript}}
-\label{api-handlers-pyscript}
-
-The \module{aspen.handlers.pyscript} module defines the following function:
-
-\begin{funcdesc}{wsgi}{environ, start_response}
-
-This handler executes \code{environ['PATH_TRANSLATED']} with the following
-objects in its namespace:
-
-\begin{tableii}{l|l}{code}{name}{value}
-\lineii{environ}{a WSGI \code{environ} mapping}
-\lineii{response}{\class{None}}
-\lineii{start_response}{a WSGI \code{start_response} callable}
-\end{tableii}
-
-Your script must define a WSGI response object as \var{response}, or
-\class{LookupError} is raised. You can raise \class{SystemExit} to terminate the
-script; it is trapped silently.
-
+\begin{funcdesc}{HTTP500}{environ, start_response}
+Responds to every request with \code{500 Internal Server Error}.
 \end{funcdesc}
 
 

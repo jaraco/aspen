@@ -21,7 +21,7 @@ import time
 import traceback
 from os.path import isdir, isfile, join
 
-from aspen import mode, restarter
+from aspen import load, mode, restarter
 from aspen._configuration import ConfigurationError, Configuration, usage
 from aspen.website import Website
 from aspen.wsgiserver import CherryPyWSGIServer as Server
@@ -145,9 +145,9 @@ def cleanup():
         if argv is None:
             argv = sys.argv[1:]
         configure(argv) # sets globals, e.g., configuration
-    configuration.load_plugins() # user modules loaded here
+    configuration.apps = load.load_apps()
     website = Website(configuration)
-    for middleware in configuration.middleware:
+    for middleware in load.load_middleware():
         website = middleware(website)
     return website
 

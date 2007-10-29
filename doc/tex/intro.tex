@@ -45,10 +45,3 @@ A request for \file{/foo.html} would serve a file at:
 
 If all you want to do is serve static files, then that's most of what you need
 to know.
-
-To extend an Aspen website, you use a \UNIX{}-style userland located within a
-directory under the website root named \dfn{__} (that's two underscores), also
-called the website's \dfn{magic directory}. The existence and contents of this
-directory are safe from prying eyes, because Aspen will respond to any requests
-mapping to the magic directory with a \ulink{\code{404 Not
-Found}}{http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10.4.5}.
