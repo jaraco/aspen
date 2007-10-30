@@ -16,7 +16,7 @@ import socket
 import sys
 import optparse
 import ConfigParser
-from os.path import join, isdir, realpath
+from os.path import join, isdir, isfile, realpath
 
 from aspen import mode
 
@@ -38,6 +38,24 @@ class ConfigurationError(StandardError):
 
     def __str__(self):
         return self.msg
+
+
+class AttrMixin(object):
+    """Mix attribute access into a mapping type.
+    """
+
+    def __delattr__(self, name):
+        del self[name]
+
+    def __getattr__(self, name):
+        try:
+            return self[name]
+        except KeyError:
+            msg = "%s has no attribute '%s'" % (repr(self), name)
+            raise AttributeError(msg)
+
+    def __setattr__(self, name, value):
+        self[name] = value
 
 
 def validate_address(address):
@@ -131,7 +149,7 @@ class ConfigurationError(StandardError):
 
 # optparse
 # ========
-# Does this look ugly to anyone else? It works I guess.
+# Does this look ugly to anyone else? I guess it works.
 
 def callback_address(option, opt, value, parser_):
     """Must be a valid AF_INET or AF_UNIX address.
@@ -223,45 +241,81 @@ optparser.add_option( "-r", "--root"
 #                     )
 
 
-class Paths:
-    """Junkdrawer for a few paths we like to keep around.
+class Paths(dict, AttrMixin):
+    """Junkdrawer for a few paths we like to keep around (key & attr access)
     """
 
     def __init__(self, root):
         """Takes the website's filesystem root.
 
-            root    website's filesystem root: /
-            __      magic directory: /__
-            lib     python library: /__/lib/python{x.y}
-            plat    platform-specific python library: /__/lib/plat-<foo>
+            root        website's filesystem root
+            aspen_conf  <root>/aspen.conf; <root>/etc/aspen.conf
+            etc         <root>/etc
+            lib         if etc is not None, lib/python{x.y}
+            pkg                        ..., lib/python/site-packages
+            plat                       ..., lib/plat-<foo>
 
-        If there is no magic directory, then __, lib, and plat are all None. If
-        there is, then lib and plat are added to sys.path.
+        All but <root> can be None. If lib, pkg and plat are not None, they are
+        added to sys.path.
 
         """
         self.root = root
-        self.__ = join(self.root, '__')
-        if not isdir(self.__):
-            self.__ = None
+
+
+        # aspen_conf & etc
+        # ================
+
+        aspen_conf = join(self.root, 'aspen.conf')
+        has_aspen_conf = isfile(aspen_conf)
+        etc_aspen_conf = join(self.root, 'etc', 'aspen.conf')
+        has_etc_aspen_conf = isfile(etc_aspen_conf)
+        if has_aspen_conf and has_etc_aspen_conf:
+            raise ConfigurationError( "Only one of aspen.conf and "
+                                    + "etc/aspen.conf may be present."
+                                     )
+
+        self.etc = None
+        self.aspen_conf = None
+        if has_aspen_conf:
+            self.aspen_conf = aspen_conf
+        elif has_etc_aspen_conf:
+            self.etc = join(self.root, 'etc')
+            self.aspen_conf = etc_aspen_conf
+
+
+        # PYTHONPATH additions
+        # ====================
+
+        if self.etc is None:
             self.lib = None
+            self.pkg = None
             self.plat = None
         else:
-            lib = join(self.__, 'lib', 'python')
+            lib = join(self.root, 'lib', 'python')
             if isdir(lib):
                 self.lib = lib
+                sys.path.insert(0, lib)
             else:
-                lib = join(self.__, 'lib', 'python'+sys.version[:3])
-                self.lib = isdir(lib) and lib or None
-
-            plat = join(lib, 'plat-'+sys.platform)
-            self.plat = isdir(plat) and plat or None
+                lib = join(self.root, 'lib', 'python'+sys.version[:3])
+                if isdir(lib):
+                    self.lib = lib
+                    sys.path.insert(0, lib)
+                else:
+                    self.lib = None
 
             pkg = join(lib, 'site-packages')
-            self.pkg = isdir(pkg) and pkg or None
+            if isdir(pkg):
+                self.pkg = pkg
+                sys.path.insert(0, pkg)
+            else:
+                self.pkg = None
 
-            for path in (lib, plat, pkg):
-                if isdir(path):
-                    sys.path.insert(0, path)
+            plat = join(lib, 'plat-'+sys.platform)
+            if isdir(plat):
+                self.plat = plat
+                sys.path.insert(0, plat)
+            else:
+                self.plat = None
 
 
 class ConfFile(ConfigParser.RawConfigParser):
@@ -275,9 +329,10 @@ optparser.add_option( "-r", "--root"
 
     """
 
-    def __init__(self, filepath):
+    def __init__(self, filepath=False):
         ConfigParser.RawConfigParser.__init__(self)
-        self.read([filepath])
+        if filepath:
+            self.read([filepath])
 
     def __getitem__(self, name):
         return self.has_section(name) and dict(self.items(name)) or {}
@@ -308,48 +363,73 @@ optparser.add_option( "-r", "--root"
             yield self[k]
 
 
-class Configuration(object):
-    """Aggregate configuration from several sources.
+class Configuration(dict, AttrMixin):
+    """A dictionary w/ attribute access too.
     """
 
-    args = None # argument list as returned by OptionParser.parse_args
-    conf = None # a ConfFile instance
-    optparser = None # an optparse.OptionParser instance
-    opts = None # an optparse.Values instance per OptionParser.parse_args
-    paths = None # a Paths instance
-
-    address = None # the AF_INET, AF_INET6, or AF_UNIX address to bind to
-    command = None # one of restart, runfg, start, status, stop [runfg]
-    daemon = None # boolean; whether to daemonize
-    defaults = None # tuple of default resource names for a directory
-    sockfam = None # one of socket.AF_{INET,INET6,UNIX}
-    threads = None # the number of threads in the pool
-
-
     def __init__(self, argv):
-        """Takes an argv list, gives it straight to optparser.parse_args.
+        dict.__init__(self)
+
+
+        # Prime some objects
+        # ==================
+
+        self.argv = argv
+        self.args = None
+        self.apps = None
+        self.conf = None
+        self.middleware = None
+        self.optparser = None
+        self.opts = None
+        self.paths = None
+
+
+        # Defaults
+        # ========
+
+        self.address = ('', 8080)
+        self.command = 'runfg'
+        self.daemon = False
+        self.defaults = ('index.html', 'index.htm')
+        self.http_version = '1.1'
+        self.sockfam = socket.AF_INET
+        self.threads = 10
+        self._mode = 'development'
+
+
+        # Update
+        # ======
+
+        self.update_from_environment()
+        self.update_from_command_line()
+        self.update_from_conf_file()
+
+
+    # Updates
+    # =======
+
+    def update_from_environment(self):
+        """Given a Configuration object, update it from the environment.
         """
+        self._mode = mode.get() # mostly for testing
 
-        # Initialize parsers.
-        # ===================
-        # The 'root' knob can only be specified on the command line.
 
-        opts, args = optparser.parse_args(argv)
+    def update_from_command_line(self):
+        """Given a Configuration object, update it from the command line.
+        """
+        opts, args = optparser.parse_args(self.argv)
         paths = Paths(opts.root)                # default handled by optparse
-        conf = ConfFile(join(paths.root, '__', 'etc', 'aspen.conf'))
 
-        self.args = args
-        self.conf = conf
         self.optparser = optparser
         self.opts = opts
+        self.args = args
         self.paths = paths
 
 
         # command/daemon
         # ==============
-        # Like root, 'command' can only be given on the command line.
 
-        command = args and args[0] or 'runfg'
+        command = args and args[1] or 'runfg'
         if command not in COMMANDS:
             raise ConfigurationError("Bad command: %s" % command)
         daemon = command != 'runfg'
@@ -360,41 +440,47 @@ optparser.add_option( "-r", "--root"
         self.daemon = daemon
 
 
-        # address/sockfam & mode
-        # ======================
-        # These can be set either on the command line or in the conf file.
+        # address/sockfam
+        # ===============
+        # These can also be set in the conf file.
 
-        if getattr(opts, 'have_address', False):        # first check CLI
-            address = opts.address
-            sockfam = opts.sockfam
-        elif 'address' in conf.main:                    # then check conf
-            address, sockfam = validate_address(conf.main['address'])
-        else:                                           # default from optparse
-            address = opts.address
-            sockfam = socket.AF_INET
-
-        if getattr(opts, 'have_mode', False):           # first check CLI
-            mode_ = opts.mode
-        elif 'mode' in conf.main:                       # then check conf
-            mode_ = conf.main['mode']
-        else:                                           # default from mode
-            mode_ = mode.get()
-
-        self.address = address
-        self.sockfam = sockfam
-        self._mode = mode_ # mostly for testing
-        mode.set(mode_)
+        if getattr(opts, 'have_address', False):
+            self.address = address
+            self.sockfam = sockfam
 
 
-        # aspen.conf
-        # ==========
-        # These remaining options are only settable in aspen.conf. Just a
-        # couple for now.
+        # mode
+        # ====
+        # This can also be set in the environment and in the conf file.
+
+        if getattr(opts, 'have_mode', False):
+            mode.set(opts.mode)
+            self._mode = opts.mode # mostly for testing
+
+
+    def update_from_conf_file(self):
+        """Given a Configuration object, update it from the aspen.conf file.
+        """
+
+        if self.paths.aspen_conf is None:
+            self.conf = ConfFile()
+            return
+        self.conf = ConfFile(self.paths.aspen_conf)
+
+
+        # address
+        # =======
+
+        if 'address' in conf.DEFAULT:
+            address, sockfam = validate_address(conf.DEFAULT['address'])
+            self.address = address
+            self.sockfam = sockfam
+
 
         # defaults
-        # --------
+        # ========
 
-        defaults = conf.main.get('defaults', ('index.html', 'index.htm'))
+        defaults = conf.DEFAULT.get('defaults', ('index.html', 'index.htm'))
         if isinstance(defaults, basestring):
             if ',' in defaults:
                 defaults = [d.strip() for d in defaults.split(',')]
@@ -403,10 +489,29 @@ optparser.add_option( "-r", "--root"
         self.defaults = tuple(defaults)
 
 
-        # threads
-        # -------
+        # http_version
+        # ============
 
-        threads = conf.main.get('threads', 10)
+        http_version = conf.DEFAULT.get('http_version', '1.1')
+        if http_version not in ('1.0', '1.1'):
+            raise TypeError( "http_version must be 1.0 or 1.1, "
+                           + "not '%s'" % http_version
+                            )
+        self.http_version = http_version
+
+
+        # mode
+        # ====
+
+        if 'mode' in conf.DEFAULT:
+            mode.set(conf.DEFAULT['mode'])
+            self._mode = conf.DEFAULT['mode'] # mostly for testing
+
+
+        # threads
+        # =======
+
+        threads = conf.DEFAULT.get('threads', 10)
         if isinstance(threads, basestring):
             if not threads.isdigit():
                 raise TypeError( "thread count not a positive integer: "
@@ -418,28 +523,17 @@ optparser.add_option( "-r", "--root"
         self.threads = threads
 
 
-        # http_version
-        # ------------
-
-        http_version = conf.main.get('http_version', '1.1')
-        if http_version not in ('1.0', '1.1'):
-            raise TypeError( "http_version must be 1.0 or 1.1, "
-                           + "not '%s'" % http_version
-                            )
-        self.http_version = http_version
-
-
-#        # user
-#        # ----
-#        # Must be a valid user account on this system.
-#
-#        if WINDOWS:
-#            raise ConfigurationError("can't switch users on Windows")
-#        try:
-#            user = pwd.getpwnam(candidate)[2]
-#        except KeyError:
-#            raise ConfigurationError("bad user: '%s'" % candidate)
-#        return user
+    #        # user
+    #        # ====
+    #        # Must be a valid user account on this system.
+    #
+    #        if WINDOWS:
+    #            raise ConfigurationError("can't switch users on Windows")
+    #        try:
+    #            user = pwd.getpwnam(candidate)[2]
+    #        except KeyError:
+    #            raise ConfigurationError("bad user: '%s'" % candidate)
+    #        return user
 
 
         # Logging
@@ -451,12 +545,12 @@ optparser.add_option( "-r", "--root"
         # subsystem and level.
 
 
-#        #logging.basicConfig(format=FORMAT)
-#
-#        handler = logging.StreamHandler()
-#        handler.addFilter(logging.Filter(self.opts.log_filter))
-#        form = logging.Formatter(logging.BASIC_FORMAT)
-#        handler.setFormatter(form)
-#        logging.root.addHandler(handler)
-#        logging.root.setLevel(self.opts.log_level)
-#        log.debug("logging configured")
+    #        #logging.basicConfig(format=FORMAT)
+    #
+    #        handler = logging.StreamHandler()
+    #        handler.addFilter(logging.Filter(self.opts.log_filter))
+    #        form = logging.Formatter(logging.BASIC_FORMAT)
+    #        handler.setFormatter(form)
+    #        logging.root.addHandler(handler)
+    #        logging.root.setLevel(self.opts.log_level)
+    #        log.debug("logging configured")

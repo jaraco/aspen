@@ -6,6 +6,7 @@ import logging
 import os
 from os.path import isdir, isfile, join, realpath
 
+import aspen
 from aspen import colon, utils
 from aspen.exceptions import *
 
@@ -26,88 +27,56 @@ __/etc/apps.conf. To wit:
     """Return a list of (URI path, WSGI application) tuples.
     """
 
-    # Find a config file to parse.
-    # ============================
-
     apps = []
-
-    try:
-        if aspen.paths.__ is None:
-            raise NotImplementedError
-        path = join(aspen.paths.__, 'etc', 'apps.conf')
-        if not isfile(path):
-            raise NotImplementedError
-    except NotImplementedError:
-        log.info("No apps configured.")
-        return apps
-
-
-    # We have a config file; proceed.
-    # ===============================
-
-    fp = open(path)
-    lineno = 0
     urlpaths = []
+    if not aspen.conf.has_section('apps'):
+        return apps
 
     for dirpath, dirnames, filenames in os.walk(aspen.paths.root):
         if 'README.aspen' not in filenames:
             continue
         os.remove(join(dirpath, 'README.aspen'))
 
-    for line in fp:
-        lineno += 1
-        original = line # for README.aspen
-        line = utils.clean(line)
-        if not line:                            # blank line
-            continue
-        else:                                   # specification
-
-            # Perform basic validation.
-            # =========================
-
-            if (SPACE not in line) and (TAB not in line):
-                msg = "malformed line (no whitespace): '%s'" % line
-                raise AppsConfError(msg, lineno)
-            urlpath, name = line.split(None, 1)
-            if not urlpath.startswith('/'):
-                msg = "URL path not specified absolutely: '%s'" % urlpath
-                raise AppsConfError(msg, lineno)
+    for urlpath, name in aspen.conf.items('apps'):
+        if not urlpath.startswith('/'):
+            msg = "URL path not specified absolutely: '%s'" % urlpath
+            raise ConfError(msg, lineno)
 
 
-            # Instantiate the app on the filesystem.
-            # ======================================
+        # Instantiate the app on the filesystem.
+        # ======================================
 
-            fspath = utils.translate(aspen.paths.root, urlpath)
-            if not isdir(fspath):
-                os.makedirs(fspath)
-                log.info("created app directory '%s'"% fspath)
-            readme = join(fspath, 'README.aspen')
-            open(readme, 'w+').write(README_aspen % (lineno, original))
+        fspath = utils.translate(aspen.paths.root, urlpath)
+        if not isdir(fspath):
+            os.makedirs(fspath)
+            log.info("created app directory '%s'"% fspath)
+        readme = join(fspath, 'README.aspen')
+        open(readme, 'w+').write(README_aspen % (0, 'foo'))
 
 
-            # Determine whether we already have an app for this path.
-            # =======================================================
+        # Determine whether we already have an app for this path.
+        # =======================================================
 
-            msg = "URL path is contested: '%s'" % urlpath
-            contested = AppsConfError(msg, lineno)
-            if urlpath in urlpaths:
+        msg = "URL path is contested: '%s'" % urlpath
+        contested = ConfError(msg, 0)
+        if urlpath in urlpaths:
+            raise contested
+        if urlpath.endswith('/'):
+            if urlpath[:-1] in urlpaths:
                 raise contested
-            if urlpath.endswith('/'):
-                if urlpath[:-1] in urlpaths:
-                    raise contested
-            elif urlpath+'/' in urlpaths:
-                raise contested
-            urlpaths.append(urlpath)
+        elif urlpath+'/' in urlpaths:
+            raise contested
+        urlpaths.append(urlpath)
 
 
-            # Load the app, check it, store it.
-            # =================================
+        # Load the app, check it, store it.
+        # =================================
 
-            obj = colon.colonize(name, fp.name, lineno)
-            if not callable(obj):
-                msg = "'%s' is not callable" % name
-                raise AppsConfError(msg, lineno)
-            apps.append((urlpath, obj))
+        obj = colon.colonize(name, '[app def]', 0)
+        if not callable(obj):
+            msg = "'%s' is not callable" % name
+            raise ConfError(msg, 0)
+        apps.append((urlpath, obj))
 
     apps.sort()
     apps.reverse()
@@ -117,41 +86,15 @@ __/etc/apps.conf. To wit:
 def load_middleware():
     """Return a list of middleware callables in reverse order.
     """
-
-    # Find a config file to parse.
-    # ============================
-
-    default_stack = []
-
-    try:
-        if aspen.paths.__ is None:
-            raise NotImplementedError
-        path = join(aspen.paths.__, 'etc', 'middleware.conf')
-        if not isfile(path):
-            raise NotImplementedError
-    except NotImplementedError:
-        log.info("No middleware configured.")
-        return default_stack
-
-
-    # We have a config file; proceed.
-    # ===============================
-
-    fp = open(path)
-    lineno = 0
     stack = []
-
-    for line in fp:
-        lineno += 1
-        name = utils.clean(line)
-        if not name:                            # blank line
-            continue
-        else:                                   # specification
-            obj = colon.colonize(name, fp.name, lineno)
-            if not callable(obj):
-                msg = "'%s' is not callable" % name
-                raise MiddlewareConfError(msg, lineno)
-            stack.append(obj)
-
+    stack_def = aspen.conf.DEFAULT.get('middleware', '')
+    if not stack_def:
+        return stack
+    for raw in stack_def.split():
+        obj = colon.colonize(name, '[middleware def]', 0)
+        if not callable(obj):
+            msg = "'%s' is not callable" % name
+            raise ConfError(msg, 0)
+        stack.append(obj)
     stack.reverse()
     return stack

@@ -22,7 +22,7 @@ import traceback
 from os.path import isdir, isfile, join
 
 from aspen import load, mode, restarter
-from aspen._configuration import ConfigurationError, Configuration, usage
+from aspen import _configuration as c
 from aspen.website import Website
 from aspen.wsgiserver import CherryPyWSGIServer as Server
 
@@ -49,20 +49,18 @@ CONFIGURED = False
 
 globals_ = globals()
 
-ROOT_SPLIT = os.sep + '__' + os.sep
-def find_root(argv=None):
-    if argv is None:
-        argv = sys.argv
-    script_path = argv and argv[0] or ''
-    if not script_path.startswith(os.sep):
-        script_path = os.path.join(os.getcwd(), script_path)
-    return script_path.split(ROOT_SPLIT)[0]
+def find_root():
+    """Given a script in <root>/bin/, return <root>
+    """
+    # This should just use some workingenv environment variable
+    return os.getcwd()
 
 def configure(argv=None):
     if argv is None:
         argv = ['--root', find_root()]
     global globals_
-    globals_['configuration'] = Configuration(argv)
+    configuration = c.Configuration(argv)
+    globals_['configuration'] = configuration
     globals_['conf'] = configuration.conf
     globals_['paths'] = configuration.paths
     globals_['CONFIGURED'] = True
@@ -73,10 +71,12 @@ def unconfigure(): # for completeness and tests
     globals_['conf'] = None
     globals_['paths'] = None
     globals_['CONFIGURED'] = False
-    mode.set('development')
+    mode.set('development') # back to the default
 
 
 def get_perms(path):
+    """Given a file path, return the permissions setting of the file.
+    """
     return stat.S_IMODE(os.stat(path)[stat.ST_MODE])
 
 
@@ -143,8 +143,10 @@ def cleanup():
     """
     if not CONFIGURED:
         if argv is None:
-            argv = sys.argv[1:]
+            argv = sys.argv
         configure(argv) # sets globals, e.g., configuration
+    import pdb; pdb.set_trace()
+
     configuration.apps = load.load_apps()
     website = Website(configuration)
     for middleware in load.load_middleware():
@@ -368,8 +370,8 @@ def start_server():
 
     try:
         configure(argv)
-    except ConfigurationError, err:
-        print usage
+    except c.ConfigurationError, err:
+        print c.usage
         print err.msg
         raise SystemExit(2)
 
@@ -380,20 +382,8 @@ def start_server():
             print 'launching child process'
             restarter.launch_child()
         elif restarter.CHILD:
-
-            # Make sure we restart when conf files change.
-            # ============================================
-
-            __ = configuration.paths.__
-            if __:
-                for path in ( join(__, 'etc', 'apps.conf')
-                            , join(__, 'etc', 'aspen.conf')
-                            , join(__, 'etc', 'handlers.conf')
-                            , join(__, 'etc', 'middleware.conf')
-                             ):
-                    if isfile(path):
-                        restarter.track(path)
-
+            if configuration.paths.aspen_conf is not None:
+                restarter.track(configuration.paths.aspen_conf)
             print 'starting child server'
             start_server()
         else:

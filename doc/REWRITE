@@ -1,0 +1,33 @@
+update config from the environment
+    mode
+
+
+update config from the command line
+    address
+    command (restart, runfg, start, status, stop)
+    mode
+    root
+
+
+look for <root>/aspen.conf or <root>/etc/aspen.conf
+    having both is an error
+if etc/aspen.conf, then look for extras for sys.path
+    lib/python
+    lib/python{x.y}
+    lib/plat-...
+
+
+update config from aspen.conf
+    address
+    defaults
+    http_version
+    mode
+    threads
+
+
+load middleware from middleware key in default section of aspen.conf
+    middleware = aspen.middleware:foo
+                 aspen.middleware:bar
+                 aspen.middleware:baz
+load apps from [apps] section in aspen.conf
+    / = aspen.apps:static
