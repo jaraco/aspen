@@ -145,12 +145,12 @@ def cleanup():
         if argv is None:
             argv = sys.argv
         configure(argv) # sets globals, e.g., configuration
-    import pdb; pdb.set_trace()
-
     configuration.apps = load.load_apps()
     website = Website(configuration)
     for middleware in load.load_middleware():
         website = middleware(website)
+    import pdb; pdb.set_trace()
+
     return website
 
 

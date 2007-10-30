@@ -318,7 +318,7 @@ optparser.add_option( "-r", "--root"
                 self.plat = None
 
 
-class ConfFile(ConfigParser.RawConfigParser):
+class ConfFile(object, ConfigParser.RawConfigParser):
     """Represent a configuration file.
 
     This class wraps the standard library's RawConfigParser class. The
@@ -332,18 +332,19 @@ optparser.add_option( "-r", "--root"
     def __init__(self, filepath=False):
         ConfigParser.RawConfigParser.__init__(self)
         if filepath:
-            self.read([filepath])
+            self.readfp(open(filepath))
 
     def __getitem__(self, name):
         return self.has_section(name) and dict(self.items(name)) or {}
 
     def __getattr__(self, name):
-        if name in self.__dict__:
-            return self.__dict__[name]
-        elif name in self.__class__.__dict__:
-            return self.__class__.__dict__[name]
-        else:
+        try:
+            self.__getattribute__(name)
+        except AttributeError:
             return self.__getitem__(name)
+
+    def __repr__(self):
+        return str([self.items(section) for section in self.sections()])
 
 
     # Iteration API
@@ -471,8 +472,8 @@ optparser.add_option( "-r", "--root"
         # address
         # =======
 
-        if 'address' in conf.DEFAULT:
-            address, sockfam = validate_address(conf.DEFAULT['address'])
+        if 'address' in self.conf.DEFAULT:
+            address, sockfam = validate_address(self.conf.DEFAULT['address'])
             self.address = address
             self.sockfam = sockfam
 
@@ -480,47 +481,50 @@ optparser.add_option( "-r", "--root"
         # defaults
         # ========
 
-        defaults = conf.DEFAULT.get('defaults', ('index.html', 'index.htm'))
-        if isinstance(defaults, basestring):
-            if ',' in defaults:
-                defaults = [d.strip() for d in defaults.split(',')]
-            else:
-                defaults = defaults.split()
-        self.defaults = tuple(defaults)
+        if 'defaults' in self.conf.DEFAULT:
+            defaults = self.conf.DEFAULT['defaults']
+            if isinstance(defaults, basestring):
+                if ',' in defaults:
+                    defaults = [d.strip() for d in defaults.split(',')]
+                else:
+                    defaults = defaults.split()
+            self.defaults = tuple(defaults)
 
 
         # http_version
         # ============
 
-        http_version = conf.DEFAULT.get('http_version', '1.1')
-        if http_version not in ('1.0', '1.1'):
-            raise TypeError( "http_version must be 1.0 or 1.1, "
-                           + "not '%s'" % http_version
-                            )
-        self.http_version = http_version
+        if 'http_version' in self.conf.DEFAULT:
+            http_version = self.conf.DEFAULT['http_version']
+            if http_version not in ('1.0', '1.1'):
+                raise TypeError( "http_version must be 1.0 or 1.1, "
+                               + "not '%s'" % http_version
+                                )
+            self.http_version = http_version
 
 
         # mode
         # ====
 
-        if 'mode' in conf.DEFAULT:
-            mode.set(conf.DEFAULT['mode'])
-            self._mode = conf.DEFAULT['mode'] # mostly for testing
+        if 'mode' in self.conf.DEFAULT:
+            mode.set(self.conf.DEFAULT['mode'])
+            self._mode = self.conf.DEFAULT['mode'] # mostly for testing
 
 
         # threads
         # =======
 
-        threads = conf.DEFAULT.get('threads', 10)
-        if isinstance(threads, basestring):
-            if not threads.isdigit():
-                raise TypeError( "thread count not a positive integer: "
-                               + "'%s'" % threads
-                                )
-            threads = int(threads)
-            if not threads >= 1:
-                raise ValueError("thread count less than 1: '%d'" % threads)
-        self.threads = threads
+        if threads in self.conf.DEFAULT:
+            threads = self.conf.DEFAULT['threads']
+            if isinstance(threads, basestring):
+                if not threads.isdigit():
+                    raise TypeError( "thread count not a positive integer: "
+                                   + "'%s'" % threads
+                                    )
+                threads = int(threads)
+                if not threads >= 1:
+                    raise ValueError("thread count less than 1: '%d'" % threads)
+            self.threads = threads
 
 
     #        # user
