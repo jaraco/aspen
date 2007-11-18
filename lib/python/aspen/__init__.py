@@ -1,17 +1,9 @@
 """Define the main program loop.
-
-This is actually pretty complicated, due to configuration, daemonization, and
-restarting options. Here are the objects defined below:
-
-  1. PIDFiler -- as a daemon, manages our pidfile
-  2. server_factory -- returns a wsgiserver.CherryPyWSGIServer instance
-  3. start_server -- starts the server, with error trapping
-  4. drive_daemon -- manipulates Aspen as a daemon
-  5. main -- main callable, natch
-
 """
 import base64
+import logging
 import os
+import pprint
 import signal
 import socket
 import stat
@@ -21,10 +13,9 @@ import time
 import traceback
 from os.path import isdir, isfile, join
 
-from aspen import load, mode, restarter
-from aspen import _configuration as c
-from aspen.website import Website
-from aspen.wsgiserver import CherryPyWSGIServer as Server
+from aspen import configuration, mode, restarter, website
+from aspen.pidfiler import PIDFiler
+from wsgiserver import CherryPyWSGIServer as BaseServer
 
 
 if 'win' in sys.platform:
@@ -39,162 +30,139 @@ __version__ = '~~VERSION~~'
 __all__ = ['configuration', 'conf', 'paths', '']
 
 
-# Configuration API
-# =================
+log = logging.getLogger('aspen.main')
 
-configuration = None # an aspen._configuration.Configuration instance
-conf = None # an aspen._configuration.ConfFile instance
-paths = None # an aspen._configuration.Paths instance
+
+# Module-level API
+# ================
+# No base modules within the aspen package should use this API, only add-on
+# apps. That ensures that people can use the base objects more freely.
+
+conf = None # an aspen.configuration.ConfFile instance
+paths = None # an aspen.configuration.Paths instance
+server = None # an aspen.Server instance
 CONFIGURED = False
 
-globals_ = globals()
 
 def find_root():
     """Given a script in <root>/bin/, return <root>
     """
     # This should just use some workingenv environment variable
-    return os.getcwd()
+    # or be otherwise smart
+    root = os.getcwd()
+    log.debug("returning %s" % root)
+    return root
 
-def configure(argv=None):
-    if argv is None:
-        argv = ['--root', find_root()]
+
+globals_ = globals()
+def set_API(server=None):
     global globals_
-    configuration = c.Configuration(argv)
-    globals_['configuration'] = configuration
-    globals_['conf'] = configuration.conf
-    globals_['paths'] = configuration.paths
+
+    _configuration = configuration.Configuration(server.argv)
+    if server is None: # we're being called from a helper script
+        argv = ['--root', find_root()]
+        globals_['server'] = None # no change
+    else:
+        argv = server.argv
+        globals_['server'] = server
+
+    globals_['conf'] = _configuration.conf
+    globals_['paths'] = _configuration.paths
     globals_['CONFIGURED'] = True
 
-def unconfigure(): # for completeness and tests
+    log.debug("returning %s" % pprint.pformat(_configuration))
+    return _configuration
+
+def unset_API(): # for completeness and tests
     global globals_
-    globals_['configuration'] = None
     globals_['conf'] = None
     globals_['paths'] = None
+    globals_['server'] = None
     globals_['CONFIGURED'] = False
     mode.set('development') # back to the default
+    log.debug("returning None")
 
 
-def get_perms(path):
-    """Given a file path, return the permissions setting of the file.
-    """
-    return stat.S_IMODE(os.stat(path)[stat.ST_MODE])
+class Server(BaseServer):
 
-
-class PIDFiler(threading.Thread):
-    """Thread to continuously monitor a pidfile, keeping our pid in the file.
-
-    This is run when we are a daemon, in the child process. It checks every
-    second to see if the file exists, recreating it if not. It also rewrites the
-    file every 60 seconds, just in case the contents have changed, and resets
-    the mode to 0600 just in case it has changed.
-
-    """
-
-    stop = threading.Event()
-    path = '' # path to the pidfile
-    pidcheck_timeout = 60 # seconds between pidfile writes
-    pidfile_mode = 0600 # the permission bits on the pidfile
-
-    def __init__(self):
-        threading.Thread.__init__(self)
-        self.setDaemon(True)
-
-    def write(self):
-        open(self.path, 'w+').write(str(os.getpid()))
-        self.set_perms()
-
-    def set_perms(self):
-        os.chmod(self.path, self.pidfile_mode)
-
-    def run(self):
-        """Pidfile is initially created and finally destroyed by our Daemon.
+    def __init__(self, argv=None):
+        """Extend.
         """
-        self.set_perms()
-        last_pidcheck = 0
-        while not self.stop.isSet():
-            if not isfile(self.path):
-                print "no pidfile; recreating"
-                sys.stdout.flush()
-                self.write()
-            elif (last_pidcheck + self.pidcheck_timeout) < time.time():
-                self.write()
-                last_pidcheck = time.time()
-            time.sleep(1)
-        if isfile(self.path): # sometimes we beat handlesigterm
-            os.remove(self.path)
 
-pidfiler = PIDFiler() # must actually set pidfiler.path before starting
-
-
-CLEANUPS = []
-
-def register_cleanup(func):
-    CLEANUPS.append(func)
-
-def cleanup():
-    if CLEANUPS:
-        print "cleaning up ..."
-        for func in CLEANUPS:
-            func()
-
-
-def website_factory(argv=None):
-    """Return an aspen.website.Website instance.
-    """
-    if not CONFIGURED:
         if argv is None:
-            argv = sys.argv
-        configure(argv) # sets globals, e.g., configuration
-    configuration.apps = load.load_apps()
-    website = Website(configuration)
-    for middleware in load.load_middleware():
-        website = middleware(website)
-    import pdb; pdb.set_trace()
+            self.argv = sys.argv
 
-    return website
-
-
-def server_factory():
-    """Return an aspen.wsgiserver.CherryPyWSGIServer instance.
-    """
-
-    website = website_factory()
-
-    server = Server(configuration.address, website, configuration.threads)
-    server.protocol = "HTTP/%s" % configuration.http_version
-    server.version = "Aspen/%s" % __version__
+        try:
+            self.configuration = set_API(self)
+        except configuration.ConfigurationError, err:
+            print >> sys.stderr, configuration.USAGE
+            print >> sys.stderr, err.msg
+            raise SystemExit(2)
 
 
-    # Monkey-patch server to support restarting.
-    # ==========================================
-    # Giving server a chance to shutdown cleanly largely avoids the terminal
-    # screw-up bug that plagued httpy < 1.0.
+        self.protocol = "HTTP/%s" % self.configuration.http_version
+        self.version = "Aspen/%s" % __version__
+        self.cleanups = [] # functions to run before stopping
 
-    if restarter.CHILD:
-        def tick():
-            Server.tick(server)
+        BaseServer.__init__( self
+                           , self.configuration.address
+                           , website.Website(self)
+                           , self.configuration.threads
+                            )
+
+        self.pidfiler = PIDFiler()
+        log.debug("returning None")
+
+
+    def tick(self):
+        """Extend to support restarting.
+
+        Giving server a chance to shutdown cleanly fixes the terminal screw-up
+        bug that plagued httpy < 1.0.
+
+        """
+        BaseServer.tick(self)
+        if restarter.CHILD:
             if restarter.should_restart():
-                print "restarting ..."
-                server.stop()
-                cleanup()
+                log.warn("restarting ...")
+                self.stop(None, None)
                 raise SystemExit(75)
-        server.tick = tick
+        #log.debug("Server.tick(): None") too much!
 
 
-    return server
+    def start(self):
+        """Extend to support signals and graceful shutdown.
+        """
+
+        # Bind to OS signals.
+        # ===================
+
+        signal.signal(signal.SIGINT, self.stop)
+        signal.signal(signal.SIGTERM, self.stop)
 
 
-def start_server():
-    """Get a server object and start it up.
-    """
+        # Start up.
+        # =========
+        # And gracefully handle exit conditions.
 
-    server = server_factory() # factored out to ease testing
+        log.info("aspen starting on %s" % str(self.configuration.address))
+        try:
+            BaseServer.start(self)
+        except SystemExit, exc:
+            log.warn("exiting with code %d" % exc.code)
+            raise
+        except:
+            log.critical( "cleaning up after critical exception:"
+                        + os.linesep
+                        + traceback.format_exc()
+                         )
+            self.stop(None, None)
+            raise SystemExit(1)
+
+        log.debug("returning None")
 
 
-    # Define a shutdown handler and attach to signals.
-    # ================================================
-
-    def shutdown(signum, frame):
+    def stop(self, signum, frame):
         msg = ""
         if signum is not None:
             msg = "caught "
@@ -202,40 +170,51 @@ def start_server():
                    , signal.SIGTERM:'SIGTERM'
                     }.get(signum, "signal %d" % signum)
             msg += ", "
-        print msg + "shutting down"
-        sys.stdout.flush()
-        server.stop()
-        cleanup()                                           # user hook
+        log.warn(msg + "shutting down")
+
+
+        # Base class cleanup
+        # ==================
+
+        BaseServer.stop(self)
+
+
+        # User cleanup hook
+        # =================
+
+        self.cleanup()
+
+
+        # Our own cleanup routines
+        # ========================
+
         if not WINDOWS:
-            if configuration.sockfam == socket.AF_UNIX:     # clean up socket
+            if self.configuration.sockfam == socket.AF_UNIX: # clean up socket
                 try:
-                    os.remove(configuration.address)
+                    os.remove(self.configuration.address)
                 except EnvironmentError, exc:
-                    print "error removing socket:", exc.strerror
-        if pidfiler.isAlive():                              # we're a daemon
-            pidfiler.stop.set()
-            pidfiler.join()
+                    log.error( "error removing socket:"
+                             + os.linesep
+                             + exc.strerror
+                              )
+        if self.pidfiler.isAlive():                         # we're a daemon
+            self.pidfiler.stop.set()
+            self.pidfiler.join()
 
-    signal.signal(signal.SIGINT, shutdown)
-    signal.signal(signal.SIGTERM, shutdown)
+        log.debug("returning None")
+        logging.shutdown()
 
 
-    # Start the server.
-    # =================
-    # And gracefully handle exit conditions.
+    def register_cleanup(self, func):
+        self.cleanups.append(func)
+        log.debug("returning None")
 
-    print "aspen starting on %s" % str(configuration.address)
-    sys.stdout.flush()
-    try:
-        server.start()
-    except SystemExit, exc:
-        print "exiting with code %d" % exc.code
-        raise
-    except:
-        print "cleaning up after critical exception:"
-        print traceback.format_exc()
-        shutdown(None, None)
-        raise SystemExit(1)
+    def cleanup(self):
+        if self.cleanups:
+            log.info("cleaning up ...")
+            for func in self.cleanups:
+                func()
+        log.debug("returning None")
 
 
 def drive_daemon():
@@ -251,18 +230,17 @@ def start_server():
         if not isdir(var):
             os.mkdir(var)
         pidfile = join(var, 'aspen.pid')
-        logpath = join(var, 'aspen.log')
     else:
         key = ' '.join([str(configuration.address), configuration.paths.root])
         key = base64.urlsafe_b64encode(key)
         pidfile = os.sep + join('tmp', 'aspen-%s.pid' % key)
-        logpath = '/dev/null'
+    DEVNULL = '/dev/null'
 
 
     # Instantiate the daemon.
     # =======================
 
-    daemon = Daemon(stdout=logpath, stderr=logpath, pidfile=pidfile)
+    daemon = Daemon(stdout=DEVNULL, stderr=DEVNULL, pidfile=pidfile)
 
 
     # Start/stop wrappers
@@ -271,11 +249,11 @@ def start_server():
 
     def start():
         daemon.start()
-        if not logpath == '/dev/null':
-            os.chmod(logpath, 0600)
+        pidfiler = PIDFiler()
         pidfiler.path = pidfile
         pidfiler.start()
         start_server()
+        log.debug("returning None")
 
 
     def stop(stop_output=True):
@@ -284,13 +262,13 @@ def start_server():
         # ============
 
         if not isfile(pidfile):
-            print "daemon not running"
+            log.error("daemon not running")
             raise SystemExit(1)
         data = open(pidfile).read()
         try:
             pid = int(data)
         except ValueError:
-            print "mangled pidfile: '%r'" % data
+            log.error("mangled pidfile: '%r'" % data)
             raise SystemExit(1)
 
 
@@ -305,7 +283,7 @@ def start_server():
             try:
                 os.kill(pid, sig)
             except OSError, exc:
-                print str(exc)
+                log.error(str(exc))
                 raise SystemExit(1)
 
         nattempts = 0
@@ -314,10 +292,12 @@ def start_server():
             if nattempts == 0:
                 kill(signal.SIGTERM)
             elif nattempts == 1:
-                print "%d still going; resending SIGTERM" % pid
+                log.error("%d still going; resending SIGTERM" % pid)
                 kill(signal.SIGTERM)
             elif nattempts == 2:
-                print "%d STILL going; sending SIGKILL and quiting" % pid
+                log.critical( "%d STILL going; sending SIGKILL and quiting"
+                            % pid
+                             )
                 kill(signal.SIGKILL)
                 raise SystemExit(1)
             nattempts += 1
@@ -325,6 +305,7 @@ def start_server():
             last_attempt = time.time()
             while 1:
                 if not isfile(pidfile):
+                    log.debug("returning None")
                     return # daemon has stopped
                 elif (last_attempt + kill_timeout) < time.time():
                     break # daemon hasn't stopped; time to escalate
@@ -337,7 +318,9 @@ def start_server():
 
     if configuration.command == 'start':
         if isfile(pidfile):
-            print "pidfile already exists with pid %s" % open(pidfile).read()
+            log.error( "pidfile already exists with pid %s"
+                     % open(pidfile).read()
+                      )
             raise SystemExit(1)
         start()
 
@@ -349,7 +332,7 @@ def start_server():
             os.system(command)
             raise SystemExit(0)
         else:
-            print "daemon not running"
+            log.error("daemon not running")
             raise SystemExit(0)
 
     elif configuration.command == 'stop':
@@ -365,30 +348,24 @@ def start_server():
     """Initial phase of configuration, and daemon/restarter/server branch.
     """
 
-    if argv is None:
-        argv = sys.argv[1:]
-
     try:
-        configure(argv)
-    except c.ConfigurationError, err:
-        print c.usage
-        print err.msg
-        raise SystemExit(2)
+        server = Server(argv)
 
-    try:
-        if configuration.daemon:
+        if server.configuration.daemon:
             drive_daemon()
         elif mode.DEBDEV and restarter.PARENT:
-            print 'launching child process'
+            log.info('launching child process')
             restarter.launch_child()
         elif restarter.CHILD:
-            if configuration.paths.aspen_conf is not None:
-                restarter.track(configuration.paths.aspen_conf)
-            print 'starting child server'
-            start_server()
+            if paths.aspen_conf is not None:
+                restarter.track(paths.aspen_conf)
+            log.info('starting child server')
+            server.start()
         else:
-            print 'starting server'
-            start_server()
+            log.info('starting server')
+            server.start()
 
     except KeyboardInterrupt:
         pass
+
+    log.debug("returning None")

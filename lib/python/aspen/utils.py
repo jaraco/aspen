@@ -185,6 +185,12 @@ def translate(root, url):
     return realpath(os.sep.join(parts))
 
 
+def get_perms(path):
+    """Given a file path, return the permissions setting of the file.
+    """
+    return stat.S_IMODE(os.stat(path)[stat.ST_MODE])
+
+
 # WSGIFilter
 # ==========
 

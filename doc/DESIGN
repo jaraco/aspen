@@ -1,0 +1,55 @@
+========================================
+    Support Multiple FS Layouts
+========================================
+
+We want to extend Aspen to support multiple filesystem layouts.
+
+First, look for {aspen,apps,handlers,middleware}.conf on ASPENCONFPATH, which
+defaults to:
+
+    /usr/local/etc/aspen:/usr/etc/aspen:/etc/aspen:.
+
+Multiple conf files on ASPENCONFPATH override each other in the order
+encountered. This covers "scattered" UNIX-type layouts, where Aspen is installed
+integrally with a UNIX-style operating system.
+
+Then, look for and at most one of these (first match wins):
+
+    <conf file specified on the command line> as args[2]
+    ./etc/aspen.conf
+
+Where neither of these two exist, aspen.paths.root must be set as 'root' in the
+[paths] section of aspen.conf. Where one or the other exists, aspen.paths.root
+is set to the current working directory. @@: What about var (which should be in
+paths)? __?
+
+    $ aspen conf -- print out the sources of configuration
+
+@@: How does this relate to a conf file preprocessor? Do we support both
+overriding and preprocessing? What are the specific cases and details of each?
+
+@@: What about Windows layouts? Deal with that w/ Windows service iteration.
+
+
+
+========================================
+    Object Model
+========================================
+
+bin/aspen
+ |
+ +-main
+    |
+    +-Configuration
+       |
+       +-Server
+          |
+          +- Website
+              |
+              +- App
+              |
+              +- App
+              |
+              +- App
+              |
+              +- App

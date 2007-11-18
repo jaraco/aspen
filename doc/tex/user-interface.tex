@@ -17,8 +17,8 @@ the specifics of which depend on the type of website you are building (recall
 the discussion of types of website in the
 \ulink{Introduction}{./introduction.html}).
 
-You will find API at \ulink{aspen.paths}{./api-paths.html} for accessing certain
-standard filesystem paths at and under your Aspen website.
+You will find an API at \ulink{aspen.paths}{./api-paths.html} for accessing
+certain standard filesystem paths at and under your Aspen website.
 
 
 \subsection{Application Websites} \label{directories-application}
@@ -44,13 +44,12 @@ Aspen comes with a tool, \ulink{\program{workingenv}}{./workingenv.html}, which
 aids development and deployment by turning this userland into an isolated
 sandbox.
 
-Aspen decides to serve your website as an application based on the existence of
-a file at \file{etc/aspen.conf}. Without that file, Aspen will serve your
-website as a publication/hybrid website, and as a result the \file{etc}
-directory is also a requirement for application websites.  The \file{lib/python}
-directory, on the other hand, is not required, and you may choose to install
-some or all of your site-specific Python libraries anywhere on
-\envvar{PYTHONPATH}.
+Aspen will serve your website as an application if the file
+\file{etc/aspen.conf} exists. Without that file, Aspen will serve your website
+as a publication/hybrid website, and as a result the \file{etc} directory is
+also a requirement for application websites.  The \file{lib/python} directory,
+on the other hand, is not required, and you may choose to install some or all of
+your site-specific Python libraries anywhere on \envvar{PYTHONPATH}.
 
 
 \subsection{Publication and Hybrid Websites} \label{directories-pub-hybrid}

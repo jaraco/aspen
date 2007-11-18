@@ -11,13 +11,15 @@ global aspen namespace.
 
 """
 import logging
+import logging.handlers
 import os
 import socket
 import sys
 import optparse
 import ConfigParser
-from os.path import join, isdir, isfile, realpath
+from os.path import dirname, join, isabs, isdir, isfile, realpath
 
+import aspen
 from aspen import mode
 
 
@@ -160,15 +162,15 @@ def callback_address(option, opt, value, parser_):
     parser_.values.have_address = True
 
 
-#def callback_log_level(option, opt, value, parser_):
-#    """
-#    """
-#    try:
-#        level = getattr(logging, value.upper())
-#    except AttributeError:
-#        msg = "Bad log level: %s" % value
-#        raise optparse.OptionValueError(msg)
-#    parser_.values.log_level = level
+def callback_log_level(option, opt, value, parser_):
+    """Must be a level as defined by the logging package.
+    """
+    try:
+        level = getattr(logging, value.upper())
+    except AttributeError:
+        msg = "Bad log level: %s" % value
+        raise optparse.OptionValueError(msg)
+    parser_.values.log_level = level
 
 
 def callback_root(option, opt, value, parser_):
@@ -188,8 +190,8 @@ def callback_mode(option, opt, value, parser_):
     parser_.values.have_mode= True
 
 
-usage = "aspen [options] [start,stop,&c.]; --help for more"
-optparser = optparse.OptionParser(usage=usage)
+USAGE = "aspen [options] [start,stop,&c.]; --help for more"
+optparser = optparse.OptionParser(usage=USAGE)
 
 optparser.add_option( "-a", "--address"
                     , action="callback"
@@ -199,12 +201,12 @@ optparser.add_option( "-a", "--address"
                     , help="the IP or Unix address to bind to [:8080]"
                     , type='string'
                      )
-#optparser.add_option( "-l", "--log_filter"
-#                    , default=''
-#                    , dest="log_filter"
-#                    , help="a subsystem filter for logging []"
-#                    , type='string'
-#                     )
+optparser.add_option( "-l", "--log_filter"
+                    , default=''
+                    , dest="log_filter"
+                    , help="a subsystem filter for logging []"
+                    , type='string'
+                     )
 optparser.add_option( "-m", "--mode"
                     , action="callback"
                     , callback=callback_mode
@@ -226,19 +228,19 @@ optparser.add_option( "-r", "--root"
                     , help="the root publishing directory [.]"
                     , type='string'
                      )
-#optparser.add_option( "-v", "--log_level"
-#                    , action="callback"
-#                    , callback=callback_log_level
-#                    , choices=[ 'notset', 'debug', 'info', 'warning', 'error'
-#                              , 'critical'
-#                               ]
-#                    , default='info'
-#                    , dest="log_level"
-#                    , help=( "the level below which messages will be stiffled "
-#                           + "[warning]"
-#                            )
-#                    , type='choice'
-#                     )
+optparser.add_option( "-v", "--log_level"
+                    , action="callback"
+                    , callback=callback_log_level
+                    , choices=[ 'notset', 'debug', 'info', 'warning', 'error'
+                              , 'critical'
+                               ]
+                    , default=logging.INFO
+                    , dest="log_level"
+                    , help=( "the level below which messages will be stiffled "
+                           + "[warning]"
+                            )
+                    , type='choice'
+                     )
 
 
 class Paths(dict, AttrMixin):
@@ -393,6 +395,8 @@ optparser.add_option( "-r", "--root"
         self.daemon = False
         self.defaults = ('index.html', 'index.htm')
         self.http_version = '1.1'
+        self.log_level = logging.INFO
+        self.log_filter = ''
         self.sockfam = socket.AF_INET
         self.threads = 10
         self._mode = 'development'
@@ -402,8 +406,110 @@ optparser.add_option( "-r", "--root"
         # ======
 
         self.update_from_environment()
-        self.update_from_command_line()
+        self.update_from_command_line(argv)
         self.update_from_conf_file()
+
+
+        # Propagate logging configuration.
+        # ================================
+        # For advanced configuration, use the logging package yourself.
+
+        # format
+        # ------
+
+        haveFuncName = (sys.version_info >= (2, 5))
+        format = logging.Formatter(os.linesep.join([
+              "-"*79
+            , "   Logger: %(name)s"
+            , "    Level: %(levelname)s"
+            , "   Module: %(module)s"
+            , " Function: " + (haveFuncName and "%(funcName)s" or "n/a")
+            , "     File: %(pathname)s"
+            , "   LineNo: %(lineno)d"
+            , "   Thread: %(threadName)s [%(thread)d]"
+            , "  Process: %(process)d"
+            , "Timestamp: %(asctime)s"
+            , ""
+            , "%(message)s"
+            , ""
+             ]))
+
+
+        # filter
+        # ------
+
+        filt = logging.Filter(self.log_filter)
+
+
+        # handler
+        # -------
+
+        if mode.DEVDEB:                                 # stderr
+            handler = logging.StreamHandler()
+        else:                                           # rotating log file
+            assert mode.STPROD # sanity check
+            MEGABYTE = pow(2, 20)
+
+
+            # Get logfile
+            # ===========
+
+            default = join('var', 'aspen.log')
+            logfile = self.conf.logging.get('filepath', default)
+            if not isabs(logfile):
+                logfile = join(self.paths.root, logfile)
+            if not isdir(dirname(logfile)):
+                raise ConfigurationError( "Parent directory doesn't exist: %s"
+                                        % logfile
+                                         )
+
+
+            # Get logfile size to rotate
+            # ==========================
+
+            size = self.conf.logging.get('size', '1')
+            try:
+                size = float(size)
+            except ValueError:
+                raise ConfigurationError( "Bad logfile size: %s"
+                                        % size
+                                         )
+            size = size * MEGABYTE
+
+
+            # Get number of files to keep
+            # ===========================
+
+            keep = self.conf.logging.get('keep', '5')
+            try:
+                keep = int(keep)
+            except ValueError:
+                raise ConfigurationError( "Bad logfile keep count: %s"
+                                        % keep
+                                         )
+
+
+            # Instantiate the handler
+            # =======================
+
+            Handler = logging.handlers.RotatingFileHandler
+            handler = Handler(logfile, 'a', size, keep)
+
+        handler.setFormatter(format)
+        handler.addFilter(filt)
+
+
+        # final assembly
+        # --------------
+
+        aspen_log = logging.getLogger('aspen')
+        aspen_log.handlers = []
+        aspen_log.addHandler(handler)
+        aspen_log.setLevel(self.log_level)
+        aspen_log.propagate = False
+        log.info("logging configured")
+
+        log.debug("returning None")
 
 
     # Updates
@@ -413,12 +519,13 @@ optparser.add_option( "-r", "--root"
         """Given a Configuration object, update it from the environment.
         """
         self._mode = mode.get() # mostly for testing
+        log.debug("returning None")
 
 
-    def update_from_command_line(self):
+    def update_from_command_line(self, argv):
         """Given a Configuration object, update it from the command line.
         """
-        opts, args = optparser.parse_args(self.argv)
+        opts, args = optparser.parse_args(argv)
         paths = Paths(opts.root)                # default handled by optparse
 
         self.optparser = optparser
@@ -430,7 +537,7 @@ optparser.add_option( "-r", "--root"
         # command/daemon
         # ==============
 
-        command = args and args[1] or 'runfg'
+        command = len(args) > 1 and args[1] or 'runfg'
         if command not in COMMANDS:
             raise ConfigurationError("Bad command: %s" % command)
         daemon = command != 'runfg'
@@ -446,8 +553,24 @@ optparser.add_option( "-r", "--root"
         # These can also be set in the conf file.
 
         if getattr(opts, 'have_address', False):
-            self.address = address
-            self.sockfam = sockfam
+            self.address = opts.address
+            self.sockfam = opts.sockfam
+
+
+        # log_level
+        # =========
+        # This can also be set in the conf file.
+
+        if getattr(opts, 'log_level', False):
+            self.log_level = opts.log_level
+
+
+        # log_filter
+        # ==========
+        # This can also be set in the conf file.
+
+        if getattr(opts, 'log_filter', False):
+            self.log_filter = opts.log_filter
 
 
         # mode
@@ -458,6 +581,8 @@ optparser.add_option( "-r", "--root"
             mode.set(opts.mode)
             self._mode = opts.mode # mostly for testing
 
+        log.debug("returning None")
+
 
     def update_from_conf_file(self):
         """Given a Configuration object, update it from the aspen.conf file.
@@ -465,6 +590,7 @@ optparser.add_option( "-r", "--root"
 
         if self.paths.aspen_conf is None:
             self.conf = ConfFile()
+            log.debug("returning None")
             return
         self.conf = ConfFile(self.paths.aspen_conf)
 
@@ -526,7 +652,6 @@ optparser.add_option( "-r", "--root"
                     raise ValueError("thread count less than 1: '%d'" % threads)
             self.threads = threads
 
-
     #        # user
     #        # ====
     #        # Must be a valid user account on this system.
@@ -539,22 +664,4 @@ optparser.add_option( "-r", "--root"
     #            raise ConfigurationError("bad user: '%s'" % candidate)
     #        return user
 
-
-        # Logging
-        # =======
-        # When run in the foreground, always log to stdout/stderr; otherwise,
-        # always log to __/var/log/error.log.x, rotating per megabyte.
-        #
-        # Currently we just support throttling from the command line based on
-        # subsystem and level.
-
-
-    #        #logging.basicConfig(format=FORMAT)
-    #
-    #        handler = logging.StreamHandler()
-    #        handler.addFilter(logging.Filter(self.opts.log_filter))
-    #        form = logging.Formatter(logging.BASIC_FORMAT)
-    #        handler.setFormatter(form)
-    #        logging.root.addHandler(handler)
-    #        logging.root.setLevel(self.opts.log_level)
-    #        log.debug("logging configured")
+        log.debug("returning None")

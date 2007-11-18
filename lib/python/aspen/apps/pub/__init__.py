@@ -230,3 +230,28 @@ def get_handler(self, pathname):
 
     log.warn("No handler found for filesystem path '%s'" % pathname)
     raise HandlerError("No handler found.")
+
+
+    # Translate the request to the filesystem.
+    # ========================================
+
+    hide = False
+    fspath = translate(self.configuration.paths.docroot, environ['PATH_INFO'])
+    environ['PATH_TRANSLATED'] = fspath
+
+
+    elif not exists(fspath):                            # 404 NOT FOUND
+        start_response('404 Not Found', [])
+        response = ['Resource not found.']
+
+
+    # Dispatch to a handler.
+    # ======================
+
+    response = check_trailing_slash(environ, start_response)
+    if response is None: # no redirection
+        fspath = find_default(self.configuration.defaults, fspath)
+        environ['PATH_TRANSLATED'] = fspath
+        handler = self.get_handler(fspath)
+        response = handler.handle(environ, start_response) # WSGI
+
