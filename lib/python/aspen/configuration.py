@@ -24,6 +24,7 @@ from aspen import mode
 
 
 log = logging.getLogger('aspen.configuration')
+MEGABYTE = pow(2, 20)
 COMMANDS = ('start', 'status', 'stop', 'restart', 'runfg')
 WINDOWS = 'win' in sys.platform
 if not WINDOWS:
@@ -162,17 +163,6 @@ def callback_address(option, opt, value, parser_):
     parser_.values.have_address = True
 
 
-def callback_log_level(option, opt, value, parser_):
-    """Must be a level as defined by the logging package.
-    """
-    try:
-        level = getattr(logging, value.upper())
-    except AttributeError:
-        msg = "Bad log level: %s" % value
-        raise optparse.OptionValueError(msg)
-    parser_.values.log_level = level
-
-
 def callback_root(option, opt, value, parser_):
     """Expand the root directory path and make sure the directory exists.
     """
@@ -201,12 +191,6 @@ optparser.add_option( "-a", "--address"
                     , help="the IP or Unix address to bind to [:8080]"
                     , type='string'
                      )
-optparser.add_option( "-l", "--log_filter"
-                    , default=''
-                    , dest="log_filter"
-                    , help="a subsystem filter for logging []"
-                    , type='string'
-                     )
 optparser.add_option( "-m", "--mode"
                     , action="callback"
                     , callback=callback_mode
@@ -227,19 +211,6 @@ optparser.add_option( "-r", "--root"
                     , dest="root"
                     , help="the root publishing directory [.]"
                     , type='string'
-                     )
-optparser.add_option( "-v", "--log_level"
-                    , action="callback"
-                    , callback=callback_log_level
-                    , choices=[ 'notset', 'debug', 'info', 'warning', 'error'
-                              , 'critical'
-                               ]
-                    , default=logging.INFO
-                    , dest="log_level"
-                    , help=( "the level below which messages will be stiffled "
-                           + "[warning]"
-                            )
-                    , type='choice'
                      )
 
 
@@ -395,10 +366,15 @@ optparser.add_option( "-v", "--log_level"
         self.daemon = False
         self.defaults = ('index.html', 'index.htm')
         self.http_version = '1.1'
-        self.log_level = logging.INFO
+        self.log_filepath = join('var', 'aspen.log')
         self.log_filter = ''
+        self.log_format = 'compact' # or 'verbose'
+        self.log_keep = 5
+        self.log_level = logging.INFO
+        self.log_size = 1.0
         self.sockfam = socket.AF_INET
         self.threads = 10
+        self.verbosity = 1
         self._mode = 'development'
 
 
@@ -412,88 +388,65 @@ optparser.add_option( "-v", "--log_level"
 
         # Propagate logging configuration.
         # ================================
-        # For advanced configuration, use the logging package yourself.
+        # For advanced configuration, use the logging package directly.
 
         # format
         # ------
 
         haveFuncName = (sys.version_info >= (2, 5))
-        format = logging.Formatter(os.linesep.join([
-              "-"*79
-            , "   Logger: %(name)s"
-            , "    Level: %(levelname)s"
-            , "   Module: %(module)s"
-            , " Function: " + (haveFuncName and "%(funcName)s" or "n/a")
-            , "     File: %(pathname)s"
-            , "   LineNo: %(lineno)d"
-            , "   Thread: %(threadName)s [%(thread)d]"
-            , "  Process: %(process)d"
-            , "Timestamp: %(asctime)s"
-            , ""
-            , "%(message)s"
-            , ""
-             ]))
+        func = (haveFuncName and "%(funcName)s()" or "[function name n/a]")
+        if self.log_format == 'compact':
+            format = logging.Formatter(os.linesep.join([
+                  "-"*79
+                , "%(levelname)s in " + func + " [%(name)s]"
+                , "  %(pathname)s:%(lineno)d"
+                , ""
+                , "%(message)s"
+                , ""
+                 ]))
+        elif self.log_format == 'verbose':
+            format = logging.Formatter(os.linesep.join([
+                  "-"*79
+                , "   Logger: %(name)s"
+                , "    Level: %(levelname)s"
+                , " Function: " + (haveFuncName and "%(funcName)s" or "n/a")
+                , "     File: %(pathname)s"
+                , "   LineNo: %(lineno)d"
+                , "   Thread: %(threadName)s [%(thread)d]"
+                , "  Process: %(process)d"
+                , "Timestamp: %(asctime)s"
+                , ""
+                , "%(message)s"
+                , ""
+                 ]))
+        else:
+            raise ConfigurationError("Sanity check.")
 
 
         # filter
         # ------
+        # Aha! "Note that a filter on a logger applies only to messages sent
+        # directly to that logger, whereas a filter on a handler applies also to
+        # messages received from child loggers."
+        #
+        #   http://aspn.activestate.com/ASPN/Cookbook/Python/Recipe/412552
 
-        filt = logging.Filter(self.log_filter)
+        filt = logging.Filter(self.log_filter) # '' == unfiltered
 
 
         # handler
         # -------
 
-        if mode.DEVDEB:                                 # stderr
+        if self.daemon is False:                        # stderr
             handler = logging.StreamHandler()
         else:                                           # rotating log file
-            assert mode.STPROD # sanity check
-            MEGABYTE = pow(2, 20)
-
-
-            # Get logfile
-            # ===========
-
-            default = join('var', 'aspen.log')
-            logfile = self.conf.logging.get('filepath', default)
-            if not isabs(logfile):
-                logfile = join(self.paths.root, logfile)
-            if not isdir(dirname(logfile)):
-                raise ConfigurationError( "Parent directory doesn't exist: %s"
-                                        % logfile
-                                         )
-
-
-            # Get logfile size to rotate
-            # ==========================
-
-            size = self.conf.logging.get('size', '1')
-            try:
-                size = float(size)
-            except ValueError:
-                raise ConfigurationError( "Bad logfile size: %s"
-                                        % size
-                                         )
-            size = size * MEGABYTE
-
-
-            # Get number of files to keep
-            # ===========================
-
-            keep = self.conf.logging.get('keep', '5')
-            try:
-                keep = int(keep)
-            except ValueError:
-                raise ConfigurationError( "Bad logfile keep count: %s"
-                                        % keep
-                                         )
-
-
-            # Instantiate the handler
-            # =======================
-
+            assert self.daemon is True # sanity check
             Handler = logging.handlers.RotatingFileHandler
-            handler = Handler(logfile, 'a', size, keep)
+            handler = Handler( self.log_filepath
+                             , 'a'
+                             , self.log_size * MEGABYTE
+                             , self.log_keep
+                              )
 
         handler.setFormatter(format)
         handler.addFilter(filt)
@@ -557,22 +510,6 @@ optparser.add_option( "-v", "--log_level"
             self.sockfam = opts.sockfam
 
 
-        # log_level
-        # =========
-        # This can also be set in the conf file.
-
-        if getattr(opts, 'log_level', False):
-            self.log_level = opts.log_level
-
-
-        # log_filter
-        # ==========
-        # This can also be set in the conf file.
-
-        if getattr(opts, 'log_filter', False):
-            self.log_filter = opts.log_filter
-
-
         # mode
         # ====
         # This can also be set in the environment and in the conf file.
@@ -627,6 +564,57 @@ optparser.add_option( "-v", "--log_level"
                                + "not '%s'" % http_version
                                 )
             self.http_version = http_version
+
+
+        # logging
+        # =======
+
+        if self.conf.logging:
+
+            if 'filepath' in self.conf.logging:
+                value = self.conf.logging['filepath']
+                if not isabs(value):
+                    value = join(self.paths.root, value)
+                if not isdir(dirname(value)):
+                    raise ConfigurationError( "Log file's parent directory does "
+                                            + "not exist: %s" % value
+                                             )
+
+            if 'filter' in self.conf.logging:
+                self.log_filter = self.conf.logging['filter']
+
+            if 'format' in self.conf.logging:
+                value = self.conf.logging['format'].lower()
+                if value not in ('compact', 'verbose'):
+                    raise ConfigurationError("Bad log format: %s" % value)
+                self.log_format = value
+
+            if 'level' in self.conf.logging:
+                value = self.conf.logging['level']
+                try:
+                    value = getattr(logging, value.upper())
+                except AttributeError:
+                    raise ConfigurationError("Bad log level: %s" % value)
+                self.log_level = value
+
+            if 'size' in self.conf.logging:
+                value = self.conf.logging['size']
+                try:
+                    value = float(value)
+                except ValueError:
+                    raise ConfigurationError("Bad logfile size: %s" % value)
+                self.log_size = value
+
+
+            if 'keep' in self.conf.logging:
+                value = self.conf.logging['keep']
+                try:
+                    value = int(value)
+                except ValueError:
+                    raise ConfigurationError( "Bad number of log files to "
+                                            + "keep: %s" % value
+                                             )
+                self.log_keep = value
 
 
         # mode
