@@ -152,7 +152,13 @@ class AttrMixin(object):
 
 # optparse
 # ========
-# Does this look ugly to anyone else? I guess it works.
+
+USAGE = "aspen [options] [start,stop,&c.]; --help for more"
+optparser = optparse.OptionParser(usage=USAGE)
+
+
+# address
+# -------
 
 def callback_address(option, opt, value, parser_):
     """Must be a valid AF_INET or AF_UNIX address.
@@ -162,27 +168,6 @@ def callback_address(option, opt, value, parser_):
     parser_.values.sockfam = sockfam
     parser_.values.have_address = True
 
-
-def callback_root(option, opt, value, parser_):
-    """Expand the root directory path and make sure the directory exists.
-    """
-    value = realpath(value)
-    if not isdir(value):
-        msg = "%s does not point to a directory" % value
-        raise optparse.OptionValueError(msg)
-    parser_.values.root = value
-
-
-def callback_mode(option, opt, value, parser_):
-    """Indicate that we have a mode from the command line.
-    """
-    parser_.values.mode = value
-    parser_.values.have_mode= True
-
-
-USAGE = "aspen [options] [start,stop,&c.]; --help for more"
-optparser = optparse.OptionParser(usage=USAGE)
-
 optparser.add_option( "-a", "--address"
                     , action="callback"
                     , callback=callback_address
@@ -191,6 +176,29 @@ optparser.add_option( "-a", "--address"
                     , help="the IP or Unix address to bind to [:8080]"
                     , type='string'
                      )
+
+
+# conf
+# ----
+
+optparser.add_option( "-f", "--conf"
+                    , action="store"
+                    , default=""
+                    , dest="conf"
+                    , help="the configuration file [see doc]"
+                    , type='string'
+                     )
+
+
+# mode
+# ----
+
+def callback_mode(option, opt, value, parser_):
+    """Indicate that we have a mode from the command line.
+    """
+    parser_.values.mode = value
+    parser_.values.have_mode= True
+
 optparser.add_option( "-m", "--mode"
                     , action="callback"
                     , callback=callback_mode
@@ -204,91 +212,119 @@ optparser.add_option( "-m", "--mode"
                             )
                     , type='choice'
                      )
-optparser.add_option( "-r", "--root"
-                    , action="callback"
-                    , callback=callback_root
-                    , default=os.getcwd()
-                    , dest="root"
-                    , help="the root publishing directory [.]"
-                    , type='string'
-                     )
 
 
 class Paths(dict, AttrMixin):
     """Junkdrawer for a few paths we like to keep around (key & attr access)
     """
 
-    def __init__(self, root):
-        """Takes the website's filesystem root.
+    def __init__(self, conf):
+        """Takes the website's configuration file.
 
-            root        website's filesystem root
-            aspen_conf  <root>/aspen.conf; <root>/etc/aspen.conf
-            etc         <root>/etc
-            lib         if etc is not None, lib/python{x.y}
-            pkg                        ..., lib/python/site-packages
-            plat                       ..., lib/plat-<foo>
+            conf        one of:
+                          --conf=...
+                          /etc/aspen.conf
+                          /usr/etc/aspen.conf
+                          /usr/local/etc/aspen.conf
+                          <root>/etc/aspen.conf
+            root        website's filesystem root; cwd or explicitly set in conf
+            docroot     website's document root on the filesystem; <root>/www
+            lib         <root>/lib/python
+            pkg         <lib>/site-packages
+            plat        <lib>/plat-<foo>
 
-        All but <root> can be None. If lib, pkg and plat are not None, they are
-        added to sys.path.
+        All can be None. If lib, pkg and plat are not None, they are added to
+        sys.path. The latter must be set at a later phase of config parsing.
 
         """
+
+        if conf:                    # we have a file named on the command line
+            if not isabs(conf):
+                conf = join(os.getcwd(), conf)
+            if not isfile(conf):
+                raise ConfigurationError( "Configuration file does not exist: "
+                                        + conf
+                                         )
+        else:                       # no file named on the command line
+            PATH = [ join('', 'etc', 'aspen.conf')
+                   , join('', 'usr', 'etc', 'aspen.conf')
+                   , join('', 'usr', 'local', 'etc', 'aspen.conf')
+                   , join(os.getcwd(), 'etc', 'aspen.conf')
+                    ]
+            for path in PATH:
+                if isfile(path):
+                    conf = path # last match wins
+        self.conf = conf
+
+
+    def __init_phase_2__(self, conf):
+        """Takes a parsed conf file and sets the remaining attributes.
+        """
+
+        # root
+        # ====
+
+        root = None
+        if 'root' in conf.main:
+            root = conf.main['root']
+            if not isabs(root):
+                raise ConfigurationError("root is not absolute: %s" % root)
+            if not isdir(root):
+                raise ConfigurationError("root does not exist: %s" % root)
+            root = realpath(root)
+        else:
+            root = os.getcwd()
         self.root = root
+        log.debug("configured docroot %s" % root)
 
 
-        # aspen_conf & etc
-        # ================
+        # docroot
+        # =======
 
-        aspen_conf = join(self.root, 'aspen.conf')
-        has_aspen_conf = isfile(aspen_conf)
-        etc_aspen_conf = join(self.root, 'etc', 'aspen.conf')
-        has_etc_aspen_conf = isfile(etc_aspen_conf)
-        if has_aspen_conf and has_etc_aspen_conf:
-            raise ConfigurationError( "Only one of aspen.conf and "
-                                    + "etc/aspen.conf may be present."
-                                     )
-
-        self.etc = None
-        self.aspen_conf = None
-        if has_aspen_conf:
-            self.aspen_conf = aspen_conf
-        elif has_etc_aspen_conf:
-            self.etc = join(self.root, 'etc')
-            self.aspen_conf = etc_aspen_conf
+        docroot = None
+        if 'docroot' in conf.main:
+            docroot = conf.main['docroot']
+            if not isabs(docroot):
+                docroot = join(root, docroot)
+            docroot = realpath(docroot)
+            if not isdir(docroot):
+                raise ConfigurationError("docroot does not exist: %s" % docroot)
+        else:
+            _docroot = join(root, 'www')
+            if isdir(_docroot):
+                docroot = _docroot
+        self.docroot = docroot
+        log.debug("configured docroot %s" % docroot)
 
 
         # PYTHONPATH additions
         # ====================
 
-        if self.etc is None:
-            self.lib = None
-            self.pkg = None
-            self.plat = None
-        else:
-            lib = join(self.root, 'lib', 'python')
+        lib = join(root, 'lib', 'python')
+        if isdir(lib):  # lib/python
+            self.lib = lib
+            sys.path.insert(0, lib)
+        else:           # lib/python2.5
+            lib = join(root, 'lib', 'python'+sys.version[:3])
             if isdir(lib):
                 self.lib = lib
                 sys.path.insert(0, lib)
             else:
-                lib = join(self.root, 'lib', 'python'+sys.version[:3])
-                if isdir(lib):
-                    self.lib = lib
-                    sys.path.insert(0, lib)
-                else:
-                    self.lib = None
+                self.lib = None
 
-            pkg = join(lib, 'site-packages')
-            if isdir(pkg):
-                self.pkg = pkg
-                sys.path.insert(0, pkg)
-            else:
-                self.pkg = None
+        pkg = join(lib, 'site-packages')
+        if isdir(pkg):
+            self.pkg = pkg
+            sys.path.insert(0, pkg)
+        else:
+            self.pkg = None
 
-            plat = join(lib, 'plat-'+sys.platform)
-            if isdir(plat):
-                self.plat = plat
-                sys.path.insert(0, plat)
-            else:
-                self.plat = None
+        plat = join(lib, 'plat-'+sys.platform)
+        if isdir(plat):
+            self.plat = plat
+            sys.path.insert(0, plat)
+        else:
+            self.plat = None
 
 
 class ConfFile(object, ConfigParser.RawConfigParser):
@@ -361,8 +397,9 @@ optparser.add_option( "-r", "--root"
         # Defaults
         # ========
 
-        self.address = ('', 8080)
+        self.address = ('0.0.0.0', 8080)
         self.command = 'runfg'
+        self.conf = join('etc', 'aspen.conf')
         self.daemon = False
         self.defaults = ('index.html', 'index.htm')
         self.http_version = '1.1'
@@ -372,9 +409,11 @@ optparser.add_option( "-r", "--root"
         self.log_keep = 5
         self.log_level = logging.INFO
         self.log_size = 1.0
+        #self.pidfile = join('etc', 'aspen.pid')
         self.sockfam = socket.AF_INET
         self.threads = 10
-        self.verbosity = 1
+        #self.user = ...
+        #self.group = ...
         self._mode = 'development'
 
 
@@ -383,7 +422,7 @@ optparser.add_option( "-r", "--root"
 
         self.update_from_environment()
         self.update_from_command_line(argv)
-        self.update_from_conf_file()
+        self.update_from_conf_file(self.paths.conf)
 
 
         # Propagate logging configuration.
@@ -394,11 +433,11 @@ optparser.add_option( "-r", "--root"
         # ------
 
         haveFuncName = (sys.version_info >= (2, 5))
-        func = (haveFuncName and "%(funcName)s()" or "[function name n/a]")
+        func = (haveFuncName and "in %(funcName)s()" or "")
         if self.log_format == 'compact':
             format = logging.Formatter(os.linesep.join([
                   "-"*79
-                , "%(levelname)s in " + func + " [%(name)s]"
+                , "%(levelname)s " + func + " [%(name)s]"
                 , "  %(pathname)s:%(lineno)d"
                 , ""
                 , "%(message)s"
@@ -456,11 +495,10 @@ optparser.add_option( "-r", "--root"
         # --------------
 
         aspen_log = logging.getLogger('aspen')
-        aspen_log.handlers = []
         aspen_log.addHandler(handler)
         aspen_log.setLevel(self.log_level)
         aspen_log.propagate = False
-        log.info("logging configured")
+        log.info("logging configured") # first log that works
 
         log.debug("returning None")
 
@@ -479,7 +517,7 @@ optparser.add_option( "-r", "--root"
         """Given a Configuration object, update it from the command line.
         """
         opts, args = optparser.parse_args(argv)
-        paths = Paths(opts.root)                # default handled by optparse
+        paths = Paths(opts.conf)
 
         self.optparser = optparser
         self.opts = opts
@@ -521,22 +559,22 @@ optparser.add_option( "-r", "--root"
         log.debug("returning None")
 
 
-    def update_from_conf_file(self):
-        """Given a Configuration object, update it from the aspen.conf file.
+    def update_from_conf_file(self, path):
+        """Given a path to a conf file, update ourself.
         """
 
-        if self.paths.aspen_conf is None:
-            self.conf = ConfFile()
+        self.conf = ConfFile(path)
+        self.paths.__init_phase_2__(self.conf)
+        if path is None:
             log.debug("returning None")
             return
-        self.conf = ConfFile(self.paths.aspen_conf)
 
 
         # address
         # =======
 
-        if 'address' in self.conf.DEFAULT:
-            address, sockfam = validate_address(self.conf.DEFAULT['address'])
+        if 'address' in self.conf.main:
+            address, sockfam = validate_address(self.conf.main['address'])
             self.address = address
             self.sockfam = sockfam
 
@@ -544,8 +582,8 @@ optparser.add_option( "-r", "--root"
         # defaults
         # ========
 
-        if 'defaults' in self.conf.DEFAULT:
-            defaults = self.conf.DEFAULT['defaults']
+        if 'defaults' in self.conf.main:
+            defaults = self.conf.main['defaults']
             if isinstance(defaults, basestring):
                 if ',' in defaults:
                     defaults = [d.strip() for d in defaults.split(',')]
@@ -557,8 +595,8 @@ optparser.add_option( "-r", "--root"
         # http_version
         # ============
 
-        if 'http_version' in self.conf.DEFAULT:
-            http_version = self.conf.DEFAULT['http_version']
+        if 'http_version' in self.conf.main:
+            http_version = self.conf.main['http_version']
             if http_version not in ('1.0', '1.1'):
                 raise TypeError( "http_version must be 1.0 or 1.1, "
                                + "not '%s'" % http_version
@@ -620,16 +658,16 @@ optparser.add_option( "-r", "--root"
         # mode
         # ====
 
-        if 'mode' in self.conf.DEFAULT:
-            mode.set(self.conf.DEFAULT['mode'])
-            self._mode = self.conf.DEFAULT['mode'] # mostly for testing
+        if 'mode' in self.conf.main:
+            mode.set(self.conf.main['mode'])
+            self._mode = self.conf.main['mode'] # mostly for testing
 
 
         # threads
         # =======
 
-        if threads in self.conf.DEFAULT:
-            threads = self.conf.DEFAULT['threads']
+        if 'threads' in self.conf.main:
+            threads = self.conf.main['threads']
             if isinstance(threads, basestring):
                 if not threads.isdigit():
                     raise TypeError( "thread count not a positive integer: "

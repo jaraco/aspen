@@ -1,18 +1,24 @@
+import cStringIO
+import inspect
 import logging
+from os.path import exists, isabs, isfile
 
+import aspen
 from aspen import colon, utils
+from aspen.utils import check_trailing_slash, find_default, translate
 from aspen.exceptions import *
 
 
 log = logging.getLogger('aspen.apps.pub')
 
+
 SPACE = ' '
 TAB = '\t'
 DEFAULT_HANDLERS_CONF = """\
 
-    catch_all   aspen.rules:catch_all
+    catch_all   aspen.apps.pub.rules:catch_all
 
-    [aspen.handlers.static:wsgi]
+    [aspen.apps.pub.handlers.static:wsgi]
       catch_all
 
 """
@@ -152,106 +158,121 @@ DEFAULT_HANDLERS_CONF = """\
         return eval(expression) # e.g.: True or False and not True
 
 
-def load_handlers():
-    """Return a list of Handler instances.
+class Publication(object):
+    """Model a publication website as a WSGI app.
     """
 
-    # Find a config file to parse.
-    # ============================
-
-    user_conf = False
-    if aspen.paths.__ is not None:
-        path = join(aspen.paths.__, 'etc', 'handlers.conf')
-        if isfile(path):
-            user_conf = True
-
-    if user_conf:
-        fp = open(path)
-        fpname = fp.name
-    else:
-        log.info("No handlers configured; using defaults.")
-        fp = cStringIO.StringIO(DEFAULT_HANDLERS_CONF)
-        fpname = '<default>'
+    def __init__(self):
+        """
+        """
+        self.handlers = self.load_handlers()
+        log.debug("returning None")
 
 
-    # We have a config file; proceed.
-    # ===============================
-    # The conditions in the loop below are not in the order found in the
-    # file, but are in the order necessary for correct processing.
-
-    rulefuncs = {} # a mapping of function names to rule functions
-    handlers = [] # a list of Handler objects
-    handler = None # the Handler we are currently processing
-    lineno = 0
-
-    for line in fp:
-        lineno += 1
-        line = utils.clean(line)
-        if not line:                            # blank line
-            continue
-        elif line.startswith('['):              # new section
-            if not line.endswith(']'):
-                raise HandlersConfError("missing end-bracket", lineno)
-            if not rulefuncs:
-                raise HandlersConfError("no rules specified yet", lineno)
-            name = line[1:-1]
-            obj = colon.colonize(name, fpname, lineno)
-            if inspect.isclass(obj):
-                obj = obj(self) #### @@: PRETTY CLEVER, CHAD!!!!!!!
-            if not callable(obj):
-                msg = "'%s' is not callable" % name
-                raise HandlersConfError(msg, lineno)
-            handler = Handler(rulefuncs, obj)
-            handlers.append(handler)
-            continue
-        elif handler is None:                   # anonymous section
-            if (SPACE not in line) and (TAB not in line):
-                msg = "malformed line (no whitespace): '%s'" % line
-                raise HandlersConfError(msg, lineno)
-            rulename, name = line.split(None, 1)
-            obj = colon.colonize(name, fpname, lineno)
-            if not callable(obj):
-                msg = "'%s' is not callable" % name
-                raise HandlersConfError(msg, lineno)
-            rulefuncs[rulename] = obj
-        else:                                   # named section
-            handler.add(line, lineno)
-
-    return handlers
-
-
-
-def get_handler(self, pathname):
-    """Given a full pathname, return the first matching handler.
-    """
-    for handler in aspen.configuration.handlers:
-        if handler.match(pathname):
-            return handler
-
-    log.warn("No handler found for filesystem path '%s'" % pathname)
-    raise HandlerError("No handler found.")
-
-
-    # Translate the request to the filesystem.
-    # ========================================
-
-    hide = False
-    fspath = translate(self.configuration.paths.docroot, environ['PATH_INFO'])
-    environ['PATH_TRANSLATED'] = fspath
-
-
-    elif not exists(fspath):                            # 404 NOT FOUND
-        start_response('404 Not Found', [])
-        response = ['Resource not found.']
-
-
-    # Dispatch to a handler.
-    # ======================
-
-    response = check_trailing_slash(environ, start_response)
-    if response is None: # no redirection
-        fspath = find_default(self.configuration.defaults, fspath)
+    def __call__(self, environ, start_response):
+        """WSGI contract.
+        """
+        fspath = translate(aspen.paths.docroot, environ['PATH_INFO'])
         environ['PATH_TRANSLATED'] = fspath
-        handler = self.get_handler(fspath)
-        response = handler.handle(environ, start_response) # WSGI
+        response = check_trailing_slash(environ, start_response)
+        if response is None: # no redirection
+            fspath = find_default(aspen.server.configuration.defaults, fspath)
+            environ['PATH_TRANSLATED'] = fspath
+            if not exists(fspath):                            # 404 NOT FOUND
+                start_response( '404 Not Found'
+                              , [('Content-Type', 'text/plain')]
+                               )
+                response = ['Resource not found.']
+            handler = self.get_handler(fspath)
+            response = handler.handle(environ, start_response) # WSGI
 
+        log.debug("returning %s" % response)
+        return response
+
+
+    def get_handler(self, pathname):
+        """Given a full pathname, return the first matching handler.
+        """
+        for handler in self.handlers:
+            if handler.match(pathname):
+                return handler
+
+        log.warn("No handler found for filesystem path '%s'" % pathname)
+        raise HandlerError("No handler found.")
+
+
+    def load_handlers(self):
+        """Return a list of Handler instances.
+        """
+
+        # Find a config file to parse.
+        # ============================
+
+        user_conf = False
+        if aspen.conf.pub:
+            if 'conf' in aspen.conf.pub:
+                path = aspen.conf.pub['conf']
+                if not isabs(path):
+                    path = join(aspen.paths.root, path)
+                if not isfile(path):
+                    raise ConfigurationError( "Pub handler configuration file "
+                                            + "does not exist: %s" % path
+                                             )
+                user_conf = True
+
+        if user_conf:
+            fp = open(path)
+            fpname = fp.name
+        else:
+            log.info("No handlers configured; using defaults.")
+            fp = cStringIO.StringIO(DEFAULT_HANDLERS_CONF)
+            fpname = '<default>'
+
+
+        # We have a config file; proceed.
+        # ===============================
+        # The conditions in the loop below are not in the order found in the
+        # file, but are in the order necessary for correct processing.
+
+        rulefuncs = {} # a mapping of function names to rule functions
+        handlers = [] # a list of Handler objects
+        handler = None # the Handler we are currently processing
+        lineno = 0
+
+        for line in fp:
+            lineno += 1
+            line = utils.clean(line)
+            if not line:                            # blank line
+                continue
+            elif line.startswith('['):              # new section
+                if not line.endswith(']'):
+                    raise HandlersConfError("missing end-bracket", lineno)
+                if not rulefuncs:
+                    raise HandlersConfError("no rules specified yet", lineno)
+                name = line[1:-1]
+                obj = colon.colonize(name, fpname, lineno)
+                if inspect.isclass(obj):
+                    obj = obj(self) #### @@: PRETTY CLEVER, CHAD!!!!!!!
+                if not callable(obj):
+                    msg = "'%s' is not callable" % name
+                    raise HandlersConfError(msg, lineno)
+                handler = Handler(rulefuncs, obj)
+                handlers.append(handler)
+                continue
+            elif handler is None:                   # anonymous section
+                if (SPACE not in line) and (TAB not in line):
+                    msg = "malformed line (no whitespace): '%s'" % line
+                    raise HandlersConfError(msg, lineno)
+                rulename, name = line.split(None, 1)
+                obj = colon.colonize(name, fpname, lineno)
+                if not callable(obj):
+                    msg = "'%s' is not callable" % name
+                    raise HandlersConfError(msg, lineno)
+                rulefuncs[rulename] = obj
+            else:                                   # named section
+                handler.add(line, lineno)
+
+        return handlers
+
+
+wsgi = Publication()

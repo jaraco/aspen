@@ -18,8 +18,7 @@ if not os.environ.has_key('DJANGO_SETTINGS_MODULE'):
     if settings_module is None:
         raise ImproperlyConfigured( "Please set DJANGO_SETTINGS_MODULE in "
                                   + "the environment or settings_module in "
-                                  + "the [django] section of __/etc/aspen."
-                                  + "conf."
+                                  + "the [django] section of aspen.conf."
                                    )
     else:
         os.environ['DJANGO_SETTINGS_MODULE'] = settings_module

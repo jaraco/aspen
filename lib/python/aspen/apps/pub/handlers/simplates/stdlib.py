@@ -1,7 +1,7 @@
 import mimetypes
 from os.path import isfile
 
-from aspen.handlers.simplates.base import BaseSimplate
+from aspen.apps.pub.handlers.simplates.base import BaseSimplate
 
 
 class WSGISimplate(BaseSimplate):

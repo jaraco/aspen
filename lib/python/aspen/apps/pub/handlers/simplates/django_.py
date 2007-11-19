@@ -10,7 +10,7 @@ import os
 from os.path import isfile
 
 from aspen.apps import django_ # may raise ImproperlyConfigured
-from aspen.handlers.simplates.base import BaseSimplate
+from aspen.apps.pub.handlers.simplates.base import BaseSimplate
 from django.conf.urls.defaults import patterns
 from django.core.handlers.wsgi import WSGIHandler
 from django.http import HttpResponse

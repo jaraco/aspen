@@ -99,16 +99,15 @@ def unset_API(): # for completeness and tests
             print >> sys.stderr, err.msg
             raise SystemExit(2)
 
-
-        self.protocol = "HTTP/%s" % self.configuration.http_version
-        self.version = "Aspen/%s" % __version__
-        self.cleanups = [] # functions to run before stopping
-
         BaseServer.__init__( self
                            , self.configuration.address
                            , website.Website(self)
                            , self.configuration.threads
                             )
+
+        self.protocol = "HTTP/%s" % self.configuration.http_version
+        self.version = "Aspen/%s" % __version__
+        self.cleanups = [] # functions to run before stopping
 
         self.pidfiler = PIDFiler()
         log.debug("returning None")
@@ -208,6 +207,7 @@ def unset_API(): # for completeness and tests
     def register_cleanup(self, func):
         self.cleanups.append(func)
         log.debug("returning None")
+
 
     def cleanup(self):
         if self.cleanups:
@@ -357,8 +357,8 @@ def unset_API(): # for completeness and tests
             log.info('launching child process')
             restarter.launch_child()
         elif restarter.CHILD:
-            if paths.aspen_conf is not None:
-                restarter.track(paths.aspen_conf)
+            if paths.conf is not None:
+                restarter.track(paths.conf)
             log.info('starting child server')
             server.start()
         else:

@@ -1,5 +1,6 @@
 """Module for loading objects specified in colon notation.
 """
+import logging
 from os.path import basename
 
 from aspen import utils
@@ -14,6 +15,9 @@ class ColonizeBadObjectError(ColonizeError): pass
 class ColonizeBadModuleError(ColonizeError): pass
 
 
+log = logging.getLogger("aspen.colon")
+
+
 def colonize(name, filename, lineno):
     """Given a name in colon notation and some error helpers, return an object.
 
@@ -21,8 +25,9 @@ def colonize(name, filename, lineno):
     dotted module name, followed by a colon and a dotted identifier naming
     an object within the module.
 
-    """
+    We have to account for foo.bar.baz.buz:foo.
 
+    """
     if name.count(':') != 1:
         msg = "'%s' is not valid colon notation" % name
         raise ColonizeBadColonsError(msg, filename, lineno)
@@ -35,27 +40,35 @@ def colonize(name, filename, lineno):
                    )
             raise ColonizeBadModuleError(msg, filename, lineno)
 
+    root_objname = objname.split('.')[0]
+    if not utils.is_valid_identifier(root_objname):
+        msg = ( "'%s' is not valid colon notation: " % name
+              + "bad object name '%s'" % root_objname
+               )
+        raise ColonizeBadObjectError(msg, filename, lineno)
+
     try:
-        exec 'import %s as obj' % modname
+        exec 'from %s import %s as obj' % (modname, root_objname)
     except ImportError, err:
         newmsg = "%s [%s, line %s]" % (err.args[0], basename(filename), lineno)
         err.args = (newmsg,)
         raise # preserve the original traceback
 
-    for _name in objname.split('.'):
-        if not utils.is_valid_identifier(_name):
-            msg = ( "'%s' is not valid colon notation: " % name
-                  + "bad object name '%s'" % _name
-                   )
-            raise ColonizeBadObjectError(msg, filename, lineno)
-        try:
-            obj = getattr(obj, _name)
-        except AttributeError, err:
-            newmsg = "%s [%s, line %s]" % ( err.args[0]
-                                          , basename(filename)
-                                          , lineno
-                                           )
-            err.args = (newmsg,)
-            raise # preserve the original traceback
+    if '.' in objname: # else we already have obj
+        for _name in objname.split('.')[1:]:
+            if not utils.is_valid_identifier(_name):
+                msg = ( "'%s' is not valid colon notation: " % name
+                      + "bad object name '%s'" % _name
+                       )
+                raise ColonizeBadObjectError(msg, filename, lineno)
+            try:
+                obj = getattr(obj, _name)
+            except AttributeError, err:
+                newmsg = "%s [%s, line %s]" % ( err.args[0]
+                                              , basename(filename)
+                                              , lineno
+                                               )
+                err.args = (newmsg,)
+                raise # preserve the original traceback
 
     return obj

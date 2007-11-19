@@ -36,13 +36,12 @@ log = logging.getLogger('aspen.website')
         # Wrap ourself in middleware.
         # ===========================
 
-        wrapped = self
+        wrapped = self.wsgi
         for middleware in self.load_middleware():
             wrapped = middleware(wrapped)
         self.wrapped = wrapped
 
         log.debug("returning None")
-
 
 
     def __call__(self, environ, start_response):
@@ -60,7 +59,7 @@ log = logging.getLogger('aspen.website')
         if isinstance(app, list):                   # redirection
             response = app
         elif app is None:                           # no apps configured!
-            start_response(500, ['Content-Type', 'text/plain'])
+            start_response('500', [('Content-Type', 'text/plain')])
             response = ['No apps mounted.']
         else:
             response = app(environ, start_response) # WSGI
@@ -79,7 +78,7 @@ log = logging.getLogger('aspen.website')
             obj = colon.colonize(name, '[middleware def]', 0)
             if not callable(obj):
                 msg = "'%s' is not callable" % name
-                raise ConfigurationError(msg, 0)
+                raise ConfigurationError(msg)
             stack.append(obj)
         stack.reverse()
         log.debug("returning %s" % stack)
@@ -110,7 +109,7 @@ log = logging.getLogger('aspen.website')
             # =======================================================
 
             msg = "URL path is contested: '%s'" % urlpath
-            contested = ConfigurationError(msg, 0)
+            contested = ConfigurationError(msg)
             if urlpath in urlpaths:
                 raise contested
             if urlpath.endswith('/'):
@@ -127,7 +126,7 @@ log = logging.getLogger('aspen.website')
             obj = colon.colonize(name, '[app def]', 0)
             if not callable(obj):
                 msg = "'%s' is not callable" % name
-                raise ConfigurationError(msg, 0)
+                raise ConfigurationError(msg)
             apps.append((urlpath, obj))
 
         apps.sort()

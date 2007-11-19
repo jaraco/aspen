@@ -10,8 +10,8 @@ from os.path import exists, isdir, isfile
 
 from aspen import mode, conf
 from aspen.exceptions import ConfigError
-from aspen.handlers import autoindex
-from aspen.handlers.http import HTTP403
+from aspen.apps.pub.handlers import autoindex
+from aspen.apps.pub.handlers.http import HTTP403
 
 
 # Configure directory browsing.
