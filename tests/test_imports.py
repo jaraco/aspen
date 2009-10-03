@@ -1,11 +1,15 @@
 
 def test_aspen():
     import aspen
-    assert aspen.__version__ == '~~VERSION~~'
+    expected = '~~VERSION~~' 
+    actual = aspen.__version__
+    assert actual == expected, actual
 
 def test_pycurl():
     import pycurl
-    assert pycurl.version_info()[1] == '7.19.6'
+    expected = '7.19.6' #TODO rather stringent, no?
+    actual = pycurl.version_info()[1]
+    assert actual == expected, actual
 
 def test_tornado():
     import tornado
