@@ -84,6 +84,9 @@ def assert_(expr):
 def assert_actual(expected, actual):
     assert actual == expected, actual
 
+def assert_issubclass(subclass, cls):
+    assert issubclass(subclass, cls), subclass
+
 def assert_logs(*lines, **kw):
     if lines[0] is None:
         expected = ''

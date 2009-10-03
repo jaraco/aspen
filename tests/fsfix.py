@@ -61,7 +61,7 @@ def kill_aspen_test():
     test_tutorial) but then what happens if you run this on a production box? 
     So kill those yourself.
 
-    We sort the pids for test_ipc_daemon. I think what happens is if you kill
+    We sort the pids for ipc/test_daemon. I think what happens is if you kill
     the child first and reap it ourselves, then the parent never completes? Or 
     something? Can't get to the bottom of it now. :^(
 
@@ -107,7 +107,7 @@ def teardown():
         restarter.stop_monitoring()
     else:
         restarter._initialize() # recreate _monitor thread in case it was used
-    open('log', 'r+').truncate(0)
+    open('log', 'r+').truncate(0) #TODO why no remove this file?
     if 'PYTHONMODE' in os.environ:
         del os.environ['PYTHONMODE']
 

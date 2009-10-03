@@ -2,7 +2,6 @@
 
     1. validator_address -- called in a couple places
     2. optparse -- command line interface
-    3. paths -- path storage
     4. ConfFile -- represents a configuration file
     5. Configuration -- puts it all together
 
@@ -210,9 +209,9 @@ http://www.zetadev.com/software/aspen/
 optparser = optparse.OptionParser(usage=usage, version=version)
 optparser.description = """\
 Aspen is a Python webserver. If given no arguments or options, it will start in
-the foreground serving a website from the current directory on port 5370, based
-on configuration files in ./__/etc/, logging to stdout. Full documentation is
-on the web at http://www.zetadev.com/software/aspen/.
+the foreground serving a website from the current directory on port 5370,
+logging to stdout. Full documentation is on the web at
+http://www.zetadev.com/software/aspen/.
 """
 
 
@@ -313,48 +312,6 @@ logging_group.add_option( "-v", "--log-level"
 optparser.add_option_group(logging_group)
 
 
-
-class Paths:
-    """Junkdrawer for a few paths we like to keep around.
-    """
-
-    def __init__(self, root):
-        """Takes the website's filesystem root.
-
-            root    website's filesystem root: /
-            __      magic directory: /__
-            lib     python library: /__/lib/python{x.y}
-            plat    platform-specific python library: /__/lib/plat-<foo>
-
-        If there is no magic directory, then __, lib, and plat are all None. If
-        there is, then lib and plat are added to sys.path.
-
-        """
-        self.root = root
-        self.__ = os.path.join(self.root, '__')
-        if not os.path.isdir(self.__):
-            self.__ = None
-            self.lib = None
-            self.plat = None
-        else:
-            lib = os.path.join(self.__, 'lib', 'python')
-            if os.path.isdir(lib):
-                self.lib = lib
-            else:
-                lib = os.path.join(self.__, 'lib', 'python'+sys.version[:3])
-                self.lib = os.path.isdir(lib) and lib or None
-
-            plat = os.path.join(lib, 'plat-'+sys.platform)
-            self.plat = os.path.isdir(plat) and plat or None
-
-            pkg = os.path.join(lib, 'site-packages')
-            self.pkg = os.path.isdir(pkg) and pkg or None
-
-            for path in (lib, plat, pkg):
-                if os.path.isdir(path):
-                    sys.path.insert(0, path)
-
-
 class ConfFile(ConfigParser.RawConfigParser):
     """Represent a configuration file.
 
@@ -408,7 +365,7 @@ class Configuration:
     conf = None     # a ConfFile instance
     optparser = None # an optparse.OptionParser instance
     opts = None     # an optparse.Values instance per OptionParser.parse_args
-    paths = None    # a Paths instance
+    root = ''       # the root on the filesystem
 
     address = None  # the AF_INET, AF_INET6, or AF_UNIX address to bind to
     command = None  # one of restart, start, status, stop; optional []
@@ -427,14 +384,28 @@ class Configuration:
         # The 'root' knob can only be specified on the command line.
 
         opts, args = optparser.parse_args(argv)
-        paths = Paths(opts.root)                # default handled by optparse
-        conf = ConfFile(os.path.join(paths.root, '__', 'etc', 'aspen.conf'))
+        conf = ConfFile(os.path.join(opts.root, 'etc', 'aspen.conf'))
+        #TODO Layer the conf files.
 
+        
         self.args = args
         self.conf = conf
         self.optparser = optparser
         self.opts = opts
-        self.paths = paths
+        self.root = opts.root
+
+
+        # Add paths to sys.path.
+        # ======================
+
+        lib = os.path.join(self.root, 'lib', 'python')
+        pkg = os.path.join(lib, 'site-packages')
+        libXY = os.path.join(self.root, 'lib', 'python'+sys.version[:3])
+        pkgXY = os.path.join(libXY, 'site-packages')
+
+        for path in (lib, pkg, libXY, pkgXY):
+            if os.path.isdir(path):
+                sys.path.insert(0, path)
 
 
         # command/daemon
@@ -574,7 +545,7 @@ class Configuration:
                 logging_configured = True
 
         if not logging_configured:          # logging.conf
-            logging_conf = os.path.join(paths.root, '__', 'etc', 'logging.conf')
+            logging_conf = os.path.join(self.root, 'etc', 'logging.conf')
             if os.path.exists(logging_conf):
                 logging.config.fileConfig(logging_conf) 
                 log.info("logging configured from logging.conf")
@@ -602,7 +573,7 @@ class Configuration:
         # =======
         # Pidfile only gets written in CHILD of a daemon.
 
-        vardir = os.path.join(self.paths.root, '__', 'var')
+        vardir = os.path.join(self.root, 'var')
         pidpath = os.path.join(vardir, 'aspen.pid')
         pidfile = PIDFile(pidpath)
         self.pidfile = pidfile
@@ -623,7 +594,7 @@ class Configuration:
             #  http://sluggo.scrapping.cc/python/unipath/Unipath-current/unipath/abstractpath.py
             #  http://docs.python.org/library/os.path.html#os.path.splitunc
             if not filename.startswith('/'):
-                filename = os.path.join(self.paths.root, filename)
+                filename = os.path.join(self.root, filename)
                 filename = os.path.realpath(filename)
             logdir = os.path.dirname(filename)
             if not os.path.isdir(logdir):

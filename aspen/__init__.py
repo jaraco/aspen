@@ -6,7 +6,7 @@ __version__ = '~~VERSION~~'
 WINDOWS = 'win32' in sys.platform
 
 
-from aspen.configuration import Configuration
+from aspen.configuration import Configuration, ConfigurationError, usage
 
 from tornado.httpserver import HTTPServer
 from tornado.ioloop import IOLoop
@@ -33,9 +33,16 @@ def main(argv=None):
     if argv is None:
         argv = sys.argv
 
-    configuration = Configuration(argv)
+
     #TODO make configuration available down in simplates? E.g.:
     # config.paths.root
+    try:
+        configuration = Configuration(argv)
+    except ConfigurationError, err:
+        print >> sys.stderr, usage
+        print >> sys.stderr, err.msg
+        sys.exit(2)
+
 
     app = Application([('^.*$', SimplateHandler)])
     server = HTTPServer(app)
