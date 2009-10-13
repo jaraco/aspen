@@ -22,7 +22,9 @@ from logging.handlers import TimedRotatingFileHandler
 
 import aspen
 from aspen import mode
+from aspen.colon import colonize
 from aspen.ipc.pidfile import PIDFile
+from tornado.web import RequestHandler
 
 log = logging.getLogger('aspen') # configured below; not used until then
 COMMANDS = ('start', 'status', 'stop', 'restart')
@@ -435,19 +437,6 @@ class Configuration:
         self.root = opts.root
 
 
-        # Add paths to sys.path.
-        # ======================
-
-        lib = os.path.join(self.root, 'lib', 'python')
-        pkg = os.path.join(lib, 'site-packages')
-        libXY = os.path.join(self.root, 'lib', 'python'+sys.version[:3])
-        pkgXY = os.path.join(libXY, 'site-packages')
-
-        for path in (lib, pkg, libXY, pkgXY):
-            if os.path.isdir(path):
-                sys.path.insert(0, path)
-
-
         # command/daemon
         # ==============
         # Like root, 'command' can only be given on the command line.
@@ -502,19 +491,31 @@ class Configuration:
 
         # aspen.conf
         # =============
-        # These remaining options are only settable in aspen.conf. Just a
-        # couple for now.
+        # These remaining options are only settable in aspen.conf. Just a few
+        # for now.
 
-        # defaults
-        # --------
+        # python_path 
+        # -----------
 
-        defaults = conf.main.get('defaults', ('index.html', 'index.htm'))
-        if isinstance(defaults, basestring):
-            if ',' in defaults:
-                defaults = [d.strip() for d in defaults.split(',')]
-            else:
-                defaults = defaults.split()
-        self.defaults = tuple(defaults)
+        python_path = conf.main.get('python_path', '')
+        if python_path:
+            sys.path.extend(python_path.split(os.pathsep))
+
+
+        # Handler
+        # -------
+
+        handler_spec = conf.main.get('handler', 'aspen.handler:SimpleHandler')
+        try:
+            Handler = colonize(handler_spec)
+        except (ImportError, AttributeError):
+            raise ConfigurationError( "could not import handler from %s"
+                                    % handler_spec
+                                     )
+        if not issubclass(Handler, RequestHandler):
+            raise ConfigurationError("handler is not a subclass of "
+                                     "tornado.web.RequestHandler")
+        self.Handler = Handler
 
 
         # Logging

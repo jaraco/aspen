@@ -6,7 +6,9 @@ import urllib
 
 import aspen
 from aspen import mode
-from aspen.configuration import ConfFile, Configuration as Config
+from aspen.configuration import Configuration as Config
+from aspen.configuration import ConfFile, ConfigurationError
+from aspen.handler import SimpleHandler
 from nose import SkipTest
 from tests import assert_raises
 from tests.fsfix import mk, attach_teardown
@@ -121,32 +123,95 @@ def test_mode_set_in_conf_file():
     assert actual == expected, actual
 
 
-# defaults
-# ========
+# python_path
+# ===========
 
-def test_default_defaults():
-    mk()
-    expected = ('index.html', 'index.htm')
-    actual = Config(['--root=fsfix']).defaults
-    assert actual == expected, actual
+def test_python_path():
+    __path__ = sys.path[:]
+    try:
+        path = os.pathsep.join(['foo', 'bar'])
+        mk('etc', ('etc/aspen.conf', '[main]\npython_path=%s' % path))
+        Config(['--root=fsfix'])
+        expected = ['foo', 'bar']
+        actual = sys.path[-2:]
+        assert actual == expected, actual
+    finally:
+        sys.path = __path__
 
-def test_defaults_space_separated():
-    mk('etc', ('etc/aspen.conf', '[main]\ndefaults=foo bar'))
-    expected = ('foo', 'bar')
-    actual = Config(['--root=fsfix']).defaults
-    assert actual == expected, actual
 
-def test_defaults_comma_separated():
-    mk('etc', ('etc/aspen.conf', '[main]\ndefaults=foo,bar'))
-    expected = ('foo', 'bar')
-    actual = Config(['--root=fsfix']).defaults
-    assert actual == expected, actual
+# Handler
+# =======
+# These depend on python_path working.
 
-def test_defaults_comma_and_space_separated():
-    mk('etc', ('etc/aspen.conf', '[main]\ndefaults=foo, bar, baz'))
-    expected = ('foo', 'bar', 'baz')
-    actual = Config(['--root=fsfix']).defaults
-    assert actual == expected, actual
+def test_Handler():
+    mk( 'etc'
+      , ('etc/aspen.conf',
+"""\
+[main]
+handler=good_handler:Handler
+python_path=fsfix
+""")
+      , ('good_handler.py', # name this something different than below ...
+"""\
+from tornado.web import RequestHandler
+class Handler(RequestHandler):
+    foo = 'bar'
+""")
+       )
+    try:
+        expected = 'bar'
+        actual = Config(['--root=fsfix']).Handler.foo
+        assert actual == expected, actual
+    finally:
+        sys.path.remove('fsfix')
+
+
+def test_Handler_default():
+    expected = SimpleHandler
+    actual = Config([]).Handler
+    assert actual is expected, actual
+
+
+def test_Handler_not_RequestHandler():
+    mk( 'etc'
+      , ('etc/aspen.conf',
+"""\
+[main]
+handler=bad_handler:Handler
+python_path=fsfix
+""")
+      , ('bad_handler.py', # ... to avoid spurious fails here
+"""\
+from tornado.web import RequestHandler
+class Handler:
+    foo = 'bar'
+""")
+       )
+    try:
+        assert_raises(ConfigurationError, Config, ['--root=fsfix'])
+    finally:
+        sys.path.remove('fsfix')
+
+
+def test_Handler_ImportError_caught():
+    mk('etc', ('etc/aspen.conf', "[main]\nhandler=missing_module:Handler"))
+    assert_raises(ConfigurationError, Config, ['--root=fsfix'])
+
+
+def test_Handler_AttributeError_caught():
+    mk( 'etc'
+      , ('etc/aspen.conf',
+"""\
+[main]
+handler=test_handler:Handler
+python_path=fsfix
+""")
+      , ('test_handler.py', "pass")
+       )
+    try:
+        assert_raises(ConfigurationError, Config, ['--root=fsfix'])
+    finally:
+        sys.path.remove('fsfix')
 
 
 # pidfile 

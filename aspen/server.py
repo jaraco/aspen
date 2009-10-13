@@ -8,31 +8,11 @@ import traceback
 import aspen
 from aspen.ipc import restarter
 from tornado.httpserver import HTTPServer
-from tornado.web import HTTPError
 from tornado.ioloop import IOLoop
-from tornado.web import Application, RequestHandler
+from tornado.web import Application
 
 
 log = logging.getLogger('aspen.server')
-
-
-class SimplateHandler(RequestHandler):
-    #TODO move this to its own module
-
-    def get(self):
-        """Serve the request by processing a simplate.
-        """
-        #TODO barebones handler for some test_server.py tests
-        docroot = os.path.join(self.application.configuration.root, 'www')
-        fspath = os.path.join(docroot, self.request.path[1:])
-        if os.path.isdir(fspath):
-            fspath = os.path.join(fspath, 'index.html')
-        if os.path.isfile(fspath):
-            self.write(open(fspath).read())
-        else:
-            raise HTTPError(404)
-
-    post = put = delete = head = get
 
 
 class Server:
@@ -63,7 +43,7 @@ class Server:
         # Now it's time for the Tornado API.
         # ==================================
 
-        app = Application( [('^.*$', SimplateHandler)]
+        app = Application( [('^.*$', self.configuration.Handler)]
                          , debug=aspen.mode.DEBDEV
                           )
         app.configuration = self.configuration

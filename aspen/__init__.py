@@ -79,8 +79,6 @@ def main(argv=None):
 
     try:
         configuration = Configuration(argv)
-        #TODO make configuration available down in simplates? E.g.:
-        # config.paths.root
     except ConfigurationError, err:
         print >> sys.stderr, usage
         print >> sys.stderr, err.msg
