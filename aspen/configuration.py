@@ -13,6 +13,7 @@ import logging
 import logging.config
 import optparse
 import os
+import pwd
 import socket
 import sys
 import ConfigParser
@@ -141,6 +142,29 @@ def validate_address(address):
     return address, sockfam
 
 
+def validate_user(user):
+    """Given a string, return an int.
+    """
+    if aspen.WINDOWS:
+        raise ConfigurationError("can't switch users on Windows")
+
+    if os.getuid() != 0:
+        raise ConfigurationError("can only drop privileges if run as root")
+
+    if user.isdigit():
+        user = int(user)
+        getpw = pwd.getpwuid
+    else:
+        getpw = pwd.getpwnam
+
+    try:
+        user = getpw(user)[2]
+    except KeyError:
+        raise ConfigurationError("bad user: '%s'" % user)
+
+    return user
+
+
 def validate_log_level(log_level):
     """Convert a string to an int.
     """
@@ -166,6 +190,14 @@ def callback_address(option, opt, value, parser_):
     parser_.values.sockfam = sockfam
     parser_.values.have_address = True
     parser_.values.raw_address = value 
+
+def callback_user(option, opt, value, parser_):
+    """Must be a valid user, and only on UNIX.
+    """
+    user = validate_user(value)
+    parser_.values.user = user
+    parser_.values.have_user = True
+    parser_.values.raw_user = value
 
 def callback_root(option, opt, value, parser_):
     """Expand the root directory path and make sure the directory exists.
@@ -224,34 +256,42 @@ basic_group = optparse.OptionGroup( optparser
                                     "location, and lifecycle stage."
                                    )
 basic_group.add_option( "-a", "--address"
-                    , action="callback"
-                    , callback=callback_address
-                    , default=('0.0.0.0', 5370)
-                    , dest="address"
-                    , help="the IP or Unix address to bind to [:5370]"
-                    , type='string'
-                     )
+                      , action="callback"
+                      , callback=callback_address
+                      , default=('0.0.0.0', 5370)
+                      #, dest="address"
+                      , help="the IP or Unix address to bind to [:5370]"
+                      , type='string'
+                       )
+basic_group.add_option( "-u", "--user"
+                      , action="callback"
+                      , callback=callback_user
+                      , default=None
+                      #, dest="user"
+                      , help="the user to drop to after binding the port []"
+                      , type='string'
+                       )
 basic_group.add_option( "-m", "--mode"
-                    , action="callback"
-                    , callback=callback_mode
-                    , choices=[ 'debugging', 'deb', 'development', 'dev'
-                              , 'staging', 'st', 'production', 'prod'
-                               ]
-                    , default='development'
-                    , dest="mode"
-                    , help=( "one of: debugging, development, staging, "
-                           + "production [development]"
-                            )
-                    , type='choice'
-                     )
+                      , action="callback"
+                      , callback=callback_mode
+                      , choices=[ 'debugging', 'deb', 'development', 'dev'
+                                , 'staging', 'st', 'production', 'prod'
+                                 ]
+                      , default='development'
+                      #, dest="mode"
+                      , help=( "one of: debugging, development, staging, "
+                             + "production [development]"
+                              )
+                      , type='choice'
+                       )
 basic_group.add_option( "-r", "--root"
-                    , action="callback"
-                    , callback=callback_root
-                    , default=os.getcwd()
-                    , dest="root"
-                    , help="the root publishing directory [.]"
-                    , type='string'
-                     )
+                      , action="callback"
+                      , callback=callback_root
+                      , default=os.getcwd()
+                      #, dest="root"
+                      , help="the root publishing directory [.]"
+                      , type='string'
+                       )
 
 optparser.add_option_group(basic_group)
 
@@ -267,48 +307,48 @@ logging_group = optparse.OptionGroup( optparser
                                      )
 
 logging_group.add_option( "-o", "--log-file"
-                    , action="callback"
-                    , callback=store_raw
-                    , default=None
-                    , dest="log_file"
-                    , help="the file to which messages will be logged; if "\
-                           "specified, it will be rotated nightly for 7 days "\
-                           "[stdout]"
-                    , type='string'
-                    , metavar="FILE"
-                     )
+                        , action="callback"
+                        , callback=store_raw
+                        , default=None
+                        , dest="log_file"
+                        , help="the file to which messages will be logged; if "\
+                               "specified, it will be rotated nightly for 7 "\
+                               "days [stdout]"
+                        , type='string'
+                        , metavar="FILE"
+                         )
 logging_group.add_option( "-i", "--log-filter"
-                    , action="callback"
-                    , callback=store_raw
-                    , default=None
-                    , dest="log_filter"
-                    , help="the subsystem outside of which messages will "\
-                           "not be logged []"
-                    , type='string'
-                    , metavar="FILTER"
-                     )
+                        , action="callback"
+                        , callback=store_raw
+                        , default=None
+                        , dest="log_filter"
+                        , help="the subsystem outside of which messages will "\
+                               "not be logged []"
+                        , type='string'
+                        , metavar="FILTER"
+                         )
 logging_group.add_option( "-t", "--log-format"
-                    , action="callback"
-                    , callback=store_raw
-                    , default=None
-                    , dest="log_format"
-                    , help="the log message format per the Formatter class "\
-                           "in the Python standard library's logging module "\
-                           "[%(message)s]"
-                    , type='string'
-                    , metavar="FORMAT"
-                     )
+                        , action="callback"
+                        , callback=store_raw
+                        , default=None
+                        , dest="log_format"
+                        , help="the log message format per the Formatter "\
+                               "class in the Python standard library's "\
+                               "logging module [%(message)s]"
+                        , type='string'
+                        , metavar="FORMAT"
+                         )
 logging_group.add_option( "-v", "--log-level"
-                    , action="callback"
-                    , callback=callback_log_level
-                    , choices=LOG_LEVELS
-                    , default=None
-                    , help="the importance level at or above which to log "\
-                           "a message; options are %s [WARNING]" % \
-                           ', '.join(LOG_LEVELS)
-                    , type='choice'
-                    , metavar="LEVEL"
-                     )
+                        , action="callback"
+                        , callback=callback_log_level
+                        , choices=LOG_LEVELS
+                        , default=None
+                        , help="the importance level at or above which to log "\
+                               "a message; options are %s [WARNING]" % \
+                               ', '.join(LOG_LEVELS)
+                        , type='choice'
+                        , metavar="LEVEL"
+                         )
 optparser.add_option_group(logging_group)
 
 
@@ -426,8 +466,8 @@ class Configuration:
             self.daemon = Daemon(self)
 
 
-        # address/sockfam & mode
-        # ======================
+        # address/sockfam, user, mode
+        # ===========================
         # These can be set either on the command line or in the conf file.
 
         if getattr(opts, 'have_address', False):        # first check CLI
@@ -439,6 +479,13 @@ class Configuration:
             address = opts.address
             sockfam = socket.AF_INET
 
+        if getattr(opts, 'have_user', False):           # first check CLI
+            user = opts.user
+        elif 'user' in conf.main:                       # then check conf
+            user = validate_user(conf.main['user'])
+        else:                                           # default
+            user = None
+
         if getattr(opts, 'have_mode', False):           # first check CLI
             mode_ = opts.mode
         elif 'mode' in conf.main:                       # then check conf
@@ -448,12 +495,13 @@ class Configuration:
 
         self.address = address
         self.sockfam = sockfam
+        self.user = user
         self._mode = mode_ # mostly for testing
         mode.set(mode_)
 
 
         # aspen.conf
-        # ==========
+        # =============
         # These remaining options are only settable in aspen.conf. Just a
         # couple for now.
 
@@ -467,45 +515,6 @@ class Configuration:
             else:
                 defaults = defaults.split()
         self.defaults = tuple(defaults)
-
-
-        # threads
-        # -------
-
-        threads = conf.main.get('threads', 10)
-        if isinstance(threads, basestring):
-            if not threads.isdigit():
-                raise TypeError( "thread count not a positive integer: "
-                               + "'%s'" % threads
-                                )
-            threads = int(threads)
-            if not threads >= 1:
-                raise ValueError("thread count less than 1: '%d'" % threads)
-        self.threads = threads
-
-
-        # http_version
-        # ------------
-
-        http_version = conf.main.get('http_version', '1.1')
-        if http_version not in ('1.0', '1.1'):
-            raise TypeError( "http_version must be 1.0 or 1.1, "
-                           + "not '%s'" % http_version
-                            )
-        self.http_version = http_version
-
-
-#        # user
-#        # ----
-#        # Must be a valid user account on this system.
-#
-#        if WINDOWS:
-#            raise ConfigurationError("can't switch users on Windows")
-#        try:
-#            user = pwd.getpwnam(candidate)[2]
-#        except KeyError:
-#            raise ConfigurationError("bad user: '%s'" % candidate)
-#        return user
 
 
         # Logging

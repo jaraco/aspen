@@ -41,7 +41,6 @@ class Server:
         """Extend to take a Configuration object.
         """
         self.configuration = configuration
-        self.protocol = "HTTP/%s" % configuration.http_version
         self.version = "Aspen/%s" % aspen.__version__
         atexit.register(self.stop)
    
@@ -70,6 +69,22 @@ class Server:
         app.configuration = self.configuration
         self.server = HTTPServer(app)
         self.server.listen(self.configuration.address[1]) #TODO AF_UNIX?
+
+        uid = self.configuration.user
+        if uid is not None:
+            
+            # Drop privileges.
+            # ================
+            # "Since setresuid has a clear semantics and is able to set each
+            # user ID individually, it should always be used if available.
+            # Otherwise, to set only the effective uid, seteuid(new euid)
+            # should be used; to set all three user IDs, setreuid(new uid, new
+            # uid) should be used."
+            #
+            # http://www.cs.berkeley.edu/~daw/papers/setuid-usenix02.pdf, p16
+
+            os.setreuid(uid, uid)
+
         loop = IOLoop.instance()
         loop.start()
 

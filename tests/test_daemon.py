@@ -1,5 +1,6 @@
 """Top level tests; see also test_tutorial and test_daemon.
 """
+import commands
 import os
 import socket
 import sys
@@ -109,6 +110,21 @@ def test_conflicting_address():
         configuration = Configuration(['--address=:53700'])
         server = Server(configuration)
         yield assert_raises, socket.error, server.start
+    with_daemon(test)
+
+
+def test_privilege_dropping():
+    # We make assumptions about uid 1 and about ps. These assumptions have been
+    # validated on FreeBSD 6 and Ubuntu 8.
+    if aspen.WINDOWS or (os.getuid() != 0):
+        raise SkipTest("can only test privilege dropping as root on UNIX")
+    mk('etc', ( 'etc/aspen.conf', '[main]\nuser=1'))
+    def test():
+        pid = open('fsfix/var/aspen.pid').read()
+        uid = commands.getoutput('ps -o uid %s' % pid).splitlines()[1].strip()
+        expected = '1'
+        actual = uid
+        assert actual == expected, actual
     with_daemon(test)
 
 

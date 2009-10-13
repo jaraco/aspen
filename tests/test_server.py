@@ -48,7 +48,7 @@ def test_log():
                , force_unix_EOL=True
                 )
 
-def test_from_aspen_import_config(): #TODO fix this once we have Simplates
+def _test_from_aspen_import_config(): #TODO fix this once we have Simplates
     """multi-test for app, conf, address
     """
     mk( 'etc'

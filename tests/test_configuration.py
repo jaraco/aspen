@@ -7,6 +7,7 @@ import urllib
 import aspen
 from aspen import mode
 from aspen.configuration import ConfFile, Configuration as Config
+from nose import SkipTest
 from tests import assert_raises
 from tests.fsfix import mk, attach_teardown
 
@@ -47,6 +48,54 @@ def test_no_main_section():
     mk('etc', ('etc/aspen.conf', '[custom]\nfoo = bar'))
     expected = 'bar'
     actual = Config(['--root=fsfix']).conf.custom['foo']
+    assert actual == expected, actual
+
+
+# user 
+# ====
+
+def maybe_skip():
+    if aspen.WINDOWS:
+        raise SkipTest("no user switching on Windows")
+    if os.getuid() != 0:
+        raise SkipTest("run tests as root to test user switching")
+
+def test_user_default():
+    expected = None
+    actual = Config([]).user
+    assert actual is expected, actual
+
+def test_user_name():
+    maybe_skip()
+    expected = 0
+    actual = Config(['--user=root']).user
+    assert actual == expected, actual
+
+def test_user_uid():
+    maybe_skip()
+    expected = 0
+    actual = Config(['--user=0']).user
+    assert actual == expected, actual
+
+def test_user_name_conf_file():
+    maybe_skip()
+    mk('etc', ('etc/aspen.conf', '[main]\nuser=root'))
+    expected = 0
+    actual = Config(['--root=fsfix']).user
+    assert actual == expected, actual
+
+def test_user_uid_conf_file():
+    maybe_skip()
+    mk('etc', ('etc/aspen.conf', '[main]\nuser=0'))
+    expected = 0
+    actual = Config(['--root=fsfix']).user
+    assert actual == expected, actual
+
+def test_user_cli_trumps_conf_file():
+    maybe_skip()
+    mk('etc', ('etc/aspen.conf', '[main]\nuser=blahblah'))
+    expected = 0
+    actual = Config(['--root=fsfix', '--user=root']).user
     assert actual == expected, actual
 
 
@@ -97,80 +146,6 @@ def test_defaults_comma_and_space_separated():
     mk('etc', ('etc/aspen.conf', '[main]\ndefaults=foo, bar, baz'))
     expected = ('foo', 'bar', 'baz')
     actual = Config(['--root=fsfix']).defaults
-    assert actual == expected, actual
-
-
-# threads
-# =======
-
-def test_threads_default():
-    mk()
-    expected = 10
-    actual = Config(['--root=fsfix']).threads
-    assert actual == expected, actual
-
-def test_threads_ten():
-    mk('etc', ('etc/aspen.conf', '[main]\nthreads=10'))
-    expected = 10
-    actual = Config(['--root=fsfix']).threads
-    assert actual == expected, actual
-
-def test_threads_ten_billion():
-    mk('etc', ('etc/aspen.conf', '[main]\nthreads=10000000000'))
-    expected = 10000000000
-    actual = Config(['--root=fsfix']).threads
-    assert actual == expected, actual
-
-def test_threads_zero():
-    mk('etc', ('etc/aspen.conf', '[main]\nthreads=0000000000'))
-    expected = "thread count less than 1: '0'"
-    actual = assert_raises(ValueError, Config, ['--root=fsfix']).args[0]
-    assert actual == expected, actual
-
-def test_threads_negative_one():
-    mk('etc', ('etc/aspen.conf', '[main]\nthreads=-1'))
-    expected = "thread count not a positive integer: '-1'"
-    actual = assert_raises(TypeError, Config, ['--root=fsfix']).args[0]
-    assert actual == expected, actual
-
-def test_threads_blah_blah():
-    mk('etc', ('etc/aspen.conf', '[main]\nthreads=blah blah'))
-    expected = "thread count not a positive integer: 'blah blah'"
-    actual = assert_raises(TypeError, Config, ['--root=fsfix']).args[0]
-    assert actual == expected, actual
-
-
-# http_version
-# ============
-
-def test_http_version_default():
-    mk()
-    actual = Config(['--root=fsfix']).http_version
-    expected = '1.1'
-    assert actual == expected, actual
-
-def test_http_version_explicit_default():
-    mk('etc', ('etc/aspen.conf', '[main]\nhttp_version=1.1'))
-    actual = Config(['--root=fsfix']).http_version
-    expected = '1.1'
-    assert actual == expected, actual
-
-def test_http_version_1_0():
-    mk('etc', ('etc/aspen.conf', '[main]\nhttp_version=1.0'))
-    actual = Config(['--root=fsfix']).http_version
-    expected = '1.0'
-    assert actual == expected, actual
-
-def test_http_version_0_9():
-    mk('etc', ('etc/aspen.conf', '[main]\nhttp_version=0.9'))
-    actual = assert_raises(TypeError, Config, ['--root=fsfix']).args[0]
-    expected = "http_version must be 1.0 or 1.1, not '0.9'"
-    assert actual == expected, actual
-
-def test_http_version_anything_else():
-    mk('etc', ('etc/aspen.conf', '[main]\nhttp_version=HTTP/1.2'))
-    actual = assert_raises(TypeError, Config, ['--root=fsfix']).args[0]
-    expected = "http_version must be 1.0 or 1.1, not 'HTTP/1.2'"
     assert actual == expected, actual
 
 
