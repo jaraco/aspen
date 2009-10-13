@@ -23,6 +23,7 @@ classifiers = [
 setup( name = 'aspen'
      , version = '~~VERSION~~'
      , packages = [ 'aspen'
+                  , 'aspen.ipc'
                    ]
      , scripts = ['bin/aspen']
      , description = 'Aspen is a Python webserver.'
