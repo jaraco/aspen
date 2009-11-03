@@ -32,7 +32,7 @@ if not aspen.WINDOWS:
     from aspen.ipc.daemon import Daemon
 
 LOG_FORMAT = "%(message)s"
-LOG_LEVEL = logging.WARNING
+LOG_LEVEL = aspen.mode.DEVDEB and logging.DEBUG or logging.WARNING
 LOG_LEVELS = ( 'NIRVANA'    # oo
              , 'CRITICAL'   # 50
              , 'ERROR'      # 40
@@ -489,35 +489,6 @@ class Configuration:
         mode.set(mode_)
 
 
-        # aspen.conf
-        # =============
-        # These remaining options are only settable in aspen.conf. Just a few
-        # for now.
-
-        # python_path 
-        # -----------
-
-        python_path = conf.main.get('python_path', '')
-        if python_path:
-            sys.path.extend(python_path.split(os.pathsep))
-
-
-        # Handler
-        # -------
-
-        handler_spec = conf.main.get('handler', 'aspen.handler:SimpleHandler')
-        try:
-            Handler = colonize(handler_spec)
-        except (ImportError, AttributeError):
-            raise ConfigurationError( "could not import handler from %s"
-                                    % handler_spec
-                                     )
-        if not issubclass(Handler, RequestHandler):
-            raise ConfigurationError("handler is not a subclass of "
-                                     "tornado.web.RequestHandler")
-        self.Handler = Handler
-
-
         # Logging
         # =======
         # Logging can be configured from four places, in this order of 
@@ -577,6 +548,31 @@ class Configuration:
             self.configure_logging(**kw)
             log.info("logging configured from aspen.conf")
             logging_configured = True
+
+
+        # aspen.conf
+        # =============
+        # These remaining options are only settable in aspen.conf. Just a few
+        # for now.
+
+        # python_path 
+        # -----------
+
+        python_path = conf.main.get('python_path', '')
+        if python_path:
+            sys.path.extend(python_path.split(os.pathsep))
+
+
+        # Handler
+        # -------
+
+        handler_spec = conf.main.get('handler', 'aspen.handler:SimpleHandler')
+        log.warn("importing handler %s" % handler_spec)
+        Handler = colonize(handler_spec) # ImportError, AttributeError raises
+        if not issubclass(Handler, RequestHandler):
+            raise ConfigurationError("handler is not a subclass of "
+                                     "tornado.web.RequestHandler")
+        self.Handler = Handler
 
 
         # PIDFile
