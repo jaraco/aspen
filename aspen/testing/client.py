@@ -7,8 +7,7 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals
 
-from Cookie import SimpleCookie
-from StringIO import StringIO
+from ..backcompat import Cookie, StringIO
 
 import mimetypes
 from .. import Response
@@ -16,7 +15,7 @@ from ..utils import typecheck
 from ..website import Website
 
 BOUNDARY = b'BoUnDaRyStRiNg'
-MULTIPART_CONTENT = b'multipart/form-data; boundary=%s' % BOUNDARY
+MULTIPART_CONTENT = b'multipart/form-data; boundary=' + BOUNDARY
 
 
 class DidntRaiseResponse(Exception): pass
@@ -76,7 +75,7 @@ class Client(object):
     def __init__(self, www_root=None, project_root=None):
         self.www_root = www_root
         self.project_root = project_root
-        self.cookie = SimpleCookie()
+        self.cookie = Cookie.SimpleCookie()
         self._website = None
 
 

@@ -23,6 +23,7 @@ from ..utils import ascii_dammit
 from ..typecasting import defaults as default_typecasters
 import aspen.body_parsers
 from ..simplates.renderers import factories
+from ..backcompat import unicode
 
 default_indices = lambda: ['index.html', 'index.json', 'index',
                            'index.html.spt', 'index.json.spt', 'index.spt']
@@ -71,13 +72,13 @@ class Configurable(object):
         error = None
         try:
             value = raw
-            if isinstance(value, str):
+            if isinstance(value, bytes) or (isinstance(value, str) and unicode != str):
                 value = raw.decode('US-ASCII')
             hydrated = from_unicode(value)
-        except UnicodeDecodeError, error:
+        except UnicodeDecodeError as error:
             value = ascii_dammit(value)
             error_detail = "Configuration values must be US-ASCII."
-        except ValueError, error:
+        except ValueError as error:
             error_detail = error.args[0]
 
         if error is not None:
@@ -164,7 +165,7 @@ class Configurable(object):
                 # facility.
 
                 return os.getcwd()
-            except OSError, err:
+            except OSError as err:
                 if err.errno != errno.ENOENT:
                     raise
                 raise ConfigurationError(errorstr)

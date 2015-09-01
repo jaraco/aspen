@@ -110,9 +110,9 @@ def factories(configuration):
         try:
             capture = {}
             python_syntax = 'from aspen.simplates.renderers.%s import Factory'
-            exec python_syntax % name in capture
+            exec(python_syntax % name, capture)
             make_renderer = capture['Factory'](configuration)
-        except ImportError, err:
+        except ImportError as err:
             make_renderer = err
             err.info = sys.exc_info()
         renderer_factories[name] = make_renderer

@@ -19,7 +19,35 @@ except ImportError:
 try:
     from cStringIO import StringIO
 except ImportError:
-    from StringIO import StringIO
+    try:
+        from StringIO import StringIO
+    except ImportError:
+        from io import StringIO
+
+try:
+    import thread
+except ImportError:
+    import _thread as thread
+
+try:
+    s = StandardError
+except NameError:
+    StandardError = Exception
+
+try:
+    unicode = unicode
+except NameError:
+    unicode = str
+
+try:
+    import Cookie
+except ImportError:
+    import http.cookies as Cookie
+
+try:
+    import urlparse
+except ImportError:
+    import urllib.parse as urlparse
 
 try:                # Python >= 2.6
     from collections import Callable
@@ -136,8 +164,8 @@ def _namedtuple(typename, field_names, verbose=False, rename=False):
     namespace = dict(_itemgetter=_itemgetter, __name__='namedtuple_%s' % typename,
                      _property=property, _tuple=tuple)
     try:
-        exec template in namespace
-    except SyntaxError, e:
+        exec(template, namespace)
+    except SyntaxError as e:
         raise SyntaxError(e.message + ':\n' + template)
     result = namespace[typename]
 

@@ -1,4 +1,8 @@
 #!/usr/bin/python
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
 
 import os.path
 import posixpath
@@ -62,6 +66,7 @@ def get_table_entries():
     for line in table[3:]:
         if line.strip() == tabledefline: break # found ending header, ignore the rest
         if line.strip().startswith('#'): continue # skip comment lines
+        print(cols)
         fields = fields_from(line, cols)
         files = [ x for i, x in enumerate(inputfiles) if fields[i] == 'X' ]
         expected = fields[len(inputfiles):]

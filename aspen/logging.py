@@ -29,7 +29,7 @@ from __future__ import with_statement
 import os
 import pprint
 import sys
-import thread
+from .backcompat import thread
 import threading
 
 

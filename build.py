@@ -3,6 +3,7 @@ from __future__ import division, print_function, unicode_literals, with_statemen
 import os
 import sys
 import os.path
+from optparse import make_option
 from fabricate import main, run, shell, autoclean
 
 # Core Executables
@@ -64,7 +65,9 @@ def _env(envdir='env'):
         # We've already built our own virtualenv.
         return envdir
 
-    args = [sys.executable] + ENV_ARGS + [envdir]
+    args = [sys.executable] + ENV_ARGS
+    args += [ '--python=' + main.options.python ]
+    args += [envdir]
     run(*args)
     return envdir
 
@@ -297,6 +300,11 @@ LOCALS = dict(locals())
 NON_TARGETS = [ 'main', 'autoclean', 'run', 'shell' ]
 NON_TARGETS += list(x for x in LOCALS if x.startswith('_') or not callable(LOCALS[x] ))
 
+extra_options = [
+        make_option('--python', action="store", dest="python", default="python"),
+        ]
+
 main( default='show_targets'
+    , extra_options=extra_options
     , ignoreprefix="python"  # workaround for gh190
      )

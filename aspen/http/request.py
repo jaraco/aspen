@@ -40,8 +40,7 @@ import cgi
 import re
 import sys
 import urllib
-import urlparse
-from cStringIO import StringIO
+from ..backcompat import StringIO, urlparse, unicode
 
 from .. import Response
 from .baseheaders import BaseHeaders
@@ -145,8 +144,6 @@ def kick_against_goad(environ):
 class IntWithRaw(int):
     """Generic subclass of int to store the underlying raw bytestring.
     """
-
-    __slots__ = ['raw']
 
     def __new__(cls, i):
         if i is None:

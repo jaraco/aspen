@@ -10,6 +10,7 @@ from __future__ import print_function
 from __future__ import unicode_literals
 
 from . import Response
+from .backcompat import StandardError
 
 
 class ConfigurationError(StandardError):
