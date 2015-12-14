@@ -1,8 +1,6 @@
 """
-aspen.configuration
-+++++++++++++++++++
-
-Define configuration objects.
+aspen.request_processor
++++++++++++++++++++++++
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -15,14 +13,18 @@ import os
 import sys
 from collections import defaultdict
 
+from algorithm import Algorithm
+
 from . import parse
+from .typecasting import defaults as default_typecasters
 from ..exceptions import ConfigurationError
 from ..utils import ascii_dammit
-from ..typecasting import defaults as default_typecasters
 from ..renderers import factories
+
 
 default_indices = lambda: ['index.html', 'index.json', 'index',
                            'index.html.spt', 'index.json.spt', 'index.spt']
+
 
     # 'name':               (default,               from_unicode)
 KNOBS = \
@@ -39,9 +41,31 @@ KNOBS = \
      }
 
 
-class Configurable(object):
-    """Mixin object for aggregating configuration from several sources.
+class RequestProcessor(object):
+    """Define a parasitic request processor.
+
+    It depends on a host framework for real request/response objects.
+
     """
+
+    def __init__(self, **kwargs):
+        """Takes configuration in kwargs.
+        """
+        self.algorithm = Algorithm.from_dotted_name('aspen.request_processor.algorithm')
+        self.configure(**kwargs)
+
+
+    def process(self, path, querystring, accept_header, raise_immediately=None, return_after=None):
+        """Given a path, querystring, and Accept header, return a state dict.
+        """
+        return self.algorithm.run( request_processor=self
+                                 , path=path
+                                 , querystring=querystring
+                                 , accept_header=accept_header
+                                 , _raise_immediately=raise_immediately
+                                 , _return_after=return_after
+                                  )
+
 
     def _set(self, name, hydrated, flat, context, name_in_context):
         """Set value at self.name, calling hydrated if it's callable.

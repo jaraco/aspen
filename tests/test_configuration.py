@@ -8,24 +8,22 @@ import sys
 
 from pytest import raises, mark
 
-from aspen.configuration import Configurable, parse
 from aspen.exceptions import ConfigurationError
-from aspen.processor import Processor
+from aspen.request_processor import RequestProcessor, parse
 
 
 def test_defaults_to_defaults(harness):
-    c = Configurable()
-    c.configure()
-    actual = ( c.project_root
-             , c.www_root
+    rp = RequestProcessor()
+    actual = ( rp.project_root
+             , rp.www_root
 
-             , c.changes_reload
-             , c.charset_dynamic
-             , c.charset_static
-             , c.indices
-             , c.media_type_default
-             , c.media_type_json
-             , c.renderer_default
+             , rp.changes_reload
+             , rp.charset_dynamic
+             , rp.charset_static
+             , rp.indices
+             , rp.media_type_default
+             , rp.media_type_json
+             , rp.renderer_default
               )
     expected = ( None, os.getcwd(), False, 'UTF-8', None
                , ['index.html', 'index.json', 'index', 'index.html.spt', 'index.json.spt', 'index.spt']
@@ -34,10 +32,9 @@ def test_defaults_to_defaults(harness):
     assert actual == expected
 
 def test_www_root_defaults_to_cwd():
-    c = Configurable()
-    c.configure()
+    p = RequestProcessor()
     expected = os.path.realpath(os.getcwd())
-    actual = c.www_root
+    actual = p.www_root
     assert actual == expected
 
 @mark.skipif(sys.platform == 'win32',
@@ -46,8 +43,7 @@ def test_ConfigurationError_raised_if_no_cwd(harness):
     FSFIX = harness.fs.project.resolve('')
     os.chdir(FSFIX)
     os.rmdir(FSFIX)
-    c = Configurable()
-    raises(ConfigurationError, c.configure)
+    raises(ConfigurationError, RequestProcessor)
 
 @mark.skipif(sys.platform == 'win32',
              reason="Windows file locking makes this fail")
@@ -55,15 +51,13 @@ def test_ConfigurationError_NOT_raised_if_no_cwd_but_do_have__www_root(harness):
     foo = os.getcwd()
     os.chdir(harness.fs.project.resolve(''))
     os.rmdir(os.getcwd())
-    c = Configurable()
-    c.configure(www_root=foo)
-    assert c.www_root == foo
+    rp = RequestProcessor(www_root=foo)
+    assert rp.www_root == foo
 
-def test_configurable_sees_root_option(harness):
-    c = Configurable()
-    c.configure(www_root=harness.fs.project.resolve(''))
+def test_processor_sees_root_option(harness):
+    rp = RequestProcessor(www_root=harness.fs.project.resolve(''))
     expected = harness.fs.project.root
-    actual = c.www_root
+    actual = rp.www_root
     assert actual == expected
 
 def test_user_can_set_renderer_default(harness):
@@ -73,16 +67,16 @@ name="program"
 [----]
 Greetings, {name}!
     """
-    harness.processor.renderer_default="stdlib_format"
+    harness.request_processor.renderer_default="stdlib_format"
     harness.fs.www.mk(('index.html.spt', SIMPLATE),)
     actual = harness.simple(filepath=None, uripath='/', want='output.body')
     assert actual == 'Greetings, program!\n'
 
 def test_configuration_ignores_blank_indexfilenames():
-    p = Processor(indices='index.html,, ,default.html')
-    assert p.indices[0] == 'index.html'
-    assert p.indices[1] == 'default.html'
-    assert len(p.indices) == 2, "Too many indexfile entries"
+    rp = RequestProcessor(indices='index.html,, ,default.html')
+    assert rp.indices[0] == 'index.html'
+    assert rp.indices[1] == 'default.html'
+    assert len(rp.indices) == 2, "Too many indexfile entries"
 
 
 # Tests of parsing perversities
