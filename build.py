@@ -30,7 +30,11 @@ INSTALL_DIR = './vendor/install'
 TEST_DIR = './vendor/test'
 BOOTSTRAP_DIR = './vendor/bootstrap'
 
+USE_PY_VENV = sys.version_info > (3, 3)
+
 ENV_ARGS = [
+    '-m', 'venv',
+    ] if USE_PY_VENV else [
     './vendor/virtualenv-13.0.3.py',
     '--prompt=[aspen]',
     '--extra-search-dir=' + BOOTSTRAP_DIR,
